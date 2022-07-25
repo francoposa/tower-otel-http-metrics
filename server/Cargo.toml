@@ -1,7 +1,7 @@
 [package]
 name = "echo-server"
 version = "0.1.0"
-edition = "2021"
+edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -9,3 +9,4 @@ edition = "2021"
 axum = "0.5.*"
 hyper = {version = "*", features = ["full"]}
 tokio = {version = "*", features = ["full"]}
+serde_json = "1.*"
