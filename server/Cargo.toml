@@ -1,12 +1,14 @@
 [package]
 name = "echo-server"
-version = "0.1.0"
+version = "0.1.0-alpha.0"
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 axum = "0.5.*"
+axum-extra = {version = "*", features = ["erased-json"]}
 hyper = {version = "*", features = ["full"]}
-tokio = {version = "*", features = ["full"]}
+serde = { version = "1.*", features = ["derive"] }
 serde_json = "1.*"
+tokio = {version = "*", features = ["full"]}

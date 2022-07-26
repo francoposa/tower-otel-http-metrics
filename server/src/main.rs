@@ -2,11 +2,11 @@ use std::collections::HashMap;
 use axum::{
     body::Body,
     http::{Request},
-    response::Json,
     routing::get,
     Router,
 };
-use serde_json::{Value, json};
+use axum_extra::response::ErasedJson;
+use serde::Serialize;
 
 #[tokio::main]
 async fn main() {
@@ -17,21 +17,37 @@ async fn main() {
         .await
         .unwrap();
 }
+#[derive(Serialize, Debug)]
+struct EchoResponse {
+    method: String,
+    headers: HashMap<String, String>,
+    body: String,
+}
 
-async fn echo(request: Request<Body>) -> Json<Value> {
+async fn echo(request: Request<Body>) -> ErasedJson {
     let (req_parts, req_body) = request.into_parts();
-    let req_method = req_parts.method.as_str();
-    let req_headers = req_parts.headers;
 
-    // let req_host = match req_headers.get("Host") {
-    //     None => "",
-    //     Some(method) => method.to_str().unwrap(),
-    // };
+    let req_method = req_parts.method.to_string();
 
-    // let mut resp_body = HashMap::new();
-    // resp_body.insert("method".to_string(), req_method);
+    let parsed_req_headers = req_parts.headers.iter().map(
+        |(k, v)| (
+            k.to_string(), v.to_str().unwrap_or_default().to_string()
+        )
+    ).collect::<HashMap<String,String>>();
 
-    println!("{:?}", req_headers);
-    println!("{:?}", req_body);
-    Json(json!({}))
+    let parsed_req_body = match hyper::body::to_bytes(req_body).await {
+        Ok(bytes) => match String::from_utf8(bytes.to_vec()) {
+            Ok(str) => str,
+            Err(_) => String::new()
+        },
+        Err(_) => String::new(),
+    };
+
+    let resp_body = EchoResponse{
+        method: req_method,
+        headers: parsed_req_headers,
+        body: parsed_req_body,
+    };
+
+    ErasedJson::pretty(resp_body)
 }
