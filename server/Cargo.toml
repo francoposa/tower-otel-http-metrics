@@ -7,8 +7,7 @@ edition = "2018"
 
 [dependencies]
 axum = "0.5.*"
-axum-extra = {version = "*", features = ["erased-json"]}
-hyper = {version = "*", features = ["full"]}
+hyper = { version = "*", features = ["full"] }
 serde = { version = "1.*", features = ["derive"] }
 serde_json = "1.*"
-tokio = {version = "*", features = ["full"]}
+tokio = { version = "*", features = ["full"] }
