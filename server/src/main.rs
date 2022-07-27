@@ -1,12 +1,14 @@
 use std::collections::HashMap;
 
-use axum::{body::Body, http::Request, Json, Router, routing::get};
+use axum::{body::Body, http::Request, Json, Router, routing::{get, post}};
 use serde::Serialize;
 use serde_json::{json, Value};
 
 #[tokio::main]
 async fn main() {
-    let app = Router::new().route("/", get(echo));
+    let app = Router::new()
+        .route("/", get(echo))
+        .route("/", post(echo));
 
     axum::Server::bind(&"127.0.0.1:8080".parse().unwrap())
         .serve(app.into_make_service())
@@ -28,7 +30,8 @@ async fn echo(request: Request<Body>) -> Json<Value> {
 
     let parsed_req_headers = req_parts.headers.iter().map(
         |(k, v)| (
-            k.to_string(), v.to_str().unwrap_or_default().to_string()
+            k.to_string(),
+            v.to_str().unwrap_or_default().to_string()
         )
     ).collect::<HashMap<String, String>>();
 
