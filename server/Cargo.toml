@@ -8,6 +8,10 @@ edition = "2018"
 [dependencies]
 axum = { features = ["http1", "http2", "json"], version = "0.5.*", default-features = false }
 hyper = { version = "*", default-features = false }
-serde = { version = "1.*", features = ["derive"], default-features = false }
-serde_json = { default-features = false, version = "1.*" }
+serde = { version = "1.*", features = ["serde_derive"], default-features = false }
+serde_json = { version = "1.*", default-features = false }
 tokio = { version = "*", features = ["macros", "rt-multi-thread"], default-features = false }
+tower = { version = "*", default-features = false }
+tower-http = { version = "*", features = ["trace"], default-features = false }
+tracing = { version = "*", default-features = false }
+tracing-subscriber = { version = "*", features = ["fmt", "json", "registry"], default-features = false }
