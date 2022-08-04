@@ -11,7 +11,6 @@ use serde_json::{json, Value};
 use tower::ServiceBuilder;
 use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
 use tracing::Level;
-use tracing_subscriber;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 
