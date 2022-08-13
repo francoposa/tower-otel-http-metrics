@@ -8,9 +8,7 @@ use axum::{
 };
 use serde::Serialize;
 use serde_json::{json, Value};
-use tower::ServiceBuilder;
-use tower_http::trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer};
-use tracing::Level;
+use tracing::{info, instrument};
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 
@@ -18,20 +16,11 @@ use tracing_subscriber::{prelude::*, Registry};
 async fn main() {
     let stdout_log = tracing_subscriber::fmt::layer()
         .json()
-        .with_filter(LevelFilter::INFO);
+        .with_filter(LevelFilter::DEBUG);
     let subscriber = Registry::default().with(stdout_log);
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
-    let app = Router::new()
-        .route("/", get(echo))
-        .route("/", post(echo))
-        .layer(
-            ServiceBuilder::new().layer(
-                TraceLayer::new_for_http()
-                    .on_request(DefaultOnRequest::new().level(Level::INFO))
-                    .on_response(DefaultOnResponse::new().level(Level::INFO)),
-            ),
-        );
+    let app = Router::new().route("/", get(echo)).route("/", post(echo));
 
     axum::Server::bind(&"127.0.0.1:8080".parse().unwrap())
         .serve(app.into_make_service())
@@ -46,6 +35,7 @@ struct EchoResponse {
     body: String,
 }
 
+#[instrument]
 async fn echo(request: Request<Body>) -> Json<Value> {
     let (req_parts, req_body) = request.into_parts();
 
@@ -64,6 +54,8 @@ async fn echo(request: Request<Body>) -> Json<Value> {
         },
         Err(_) => String::new(),
     };
+
+    info!("successfully parsed request body");
 
     let resp_body = EchoResponse {
         method: req_method,

@@ -13,5 +13,5 @@ serde_json = { version = "1.*", default-features = false }
 tokio = { version = "*", features = ["macros", "rt-multi-thread"], default-features = false }
 tower = { version = "*", default-features = false }
 tower-http = { version = "*", features = ["trace"], default-features = false }
-tracing = { version = "*", default-features = false }
+tracing = { version = "*", features = ["attributes"], default-features = false }
 tracing-subscriber = { version = "*", features = ["fmt", "json", "registry"], default-features = false }
