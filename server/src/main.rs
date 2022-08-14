@@ -8,8 +8,10 @@ use axum::{
 };
 use serde::Serialize;
 use serde_json::{json, Value};
+use tower_http::classify::StatusInRangeAsFailures;
+use tower_http::trace::TraceLayer;
+use tracing::level_filters::LevelFilter;
 use tracing::{info, instrument};
-use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 
 #[tokio::main]
@@ -20,7 +22,12 @@ async fn main() {
     let subscriber = Registry::default().with(stdout_log);
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
-    let app = Router::new().route("/", get(echo)).route("/", post(echo));
+    let app = Router::new()
+        .route("/", get(echo))
+        .route("/", post(echo))
+        .layer(TraceLayer::new(
+            StatusInRangeAsFailures::new(400..=599).into_make_classifier(),
+        ));
 
     axum::Server::bind(&"127.0.0.1:8080".parse().unwrap())
         .serve(app.into_make_service())
