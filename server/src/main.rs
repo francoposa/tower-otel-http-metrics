@@ -26,6 +26,7 @@ async fn main() {
         .route("/", get(echo))
         .route("/", post(echo))
         .layer(TraceLayer::new(
+            // by default the tower http tracelayer only classifies 5xx errors as failures
             StatusInRangeAsFailures::new(400..=599).into_make_classifier(),
         ));
 
