@@ -6,6 +6,8 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use opentelemetry::global;
+use opentelemetry::sdk::export::trace::stdout as opentelemetry_stdout;
 use serde::Serialize;
 use serde_json::{json, Value};
 use tower_http::classify::StatusInRangeAsFailures;
@@ -16,17 +18,44 @@ use tracing_subscriber::{prelude::*, Registry};
 
 #[tokio::main]
 async fn main() {
-    let stdout_log = tracing_subscriber::fmt::layer()
+    // file writer layer to collect all levels of logs, mostly useful for debugging the logging setup
+    let file_appender = tracing_appender::rolling::minutely("./logs", "trace");
+    let (file_writer, _guard) = tracing_appender::non_blocking(file_appender);
+    let file_writer_layer = tracing_subscriber::fmt::layer()
+        .json()
+        .with_writer(file_writer);
+
+    // opentelemetry-formatted tracing layer to send traces to jaeger/jaeger-compatible collector
+    // see more about opentelemetry propagators here:
+    // https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/context/api-propagators.md
+    global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
+    // opentelemetry pipeline for sending to jaeger collector; port matches default jaeger docker setup
+    // this pipeline will just log connection errors to stdout if it cannot reach the collector endpoint
+    let tracer = opentelemetry_jaeger::new_pipeline()
+        .with_collector_endpoint("http://localhost:4318")
+        .install_simple()
+        .unwrap();
+    // use this stdout pipeline instead to debug or view the opentelemetry data without a collector
+    // let tracer = opentelemetry_stdout::new_pipeline().install_simple();
+    let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
+
+    // stdout log layer for non-tracing logs to be collected into ElasticSearch or similar
+    let stdout_log_layer = tracing_subscriber::fmt::layer()
         .json()
         .with_filter(LevelFilter::DEBUG);
-    let subscriber = Registry::default().with(stdout_log);
+
+    let subscriber = Registry::default()
+        .with(file_writer_layer)
+        .with(stdout_log_layer)
+        .with(telemetry);
+
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
     let app = Router::new()
         .route("/", get(echo))
         .route("/", post(echo))
         .layer(TraceLayer::new(
-            // by default the tower http tracelayer only classifies 5xx errors as failures
+            // by default the tower http trace layer only classifies 5xx errors as failures
             StatusInRangeAsFailures::new(400..=599).into_make_classifier(),
         ));
 
@@ -63,7 +92,8 @@ async fn echo(request: Request<Body>) -> Json<Value> {
         Err(_) => String::new(),
     };
 
-    info!("successfully parsed request body");
+    // example of info log in instrumented fn with KV fields; key name inferred from variable name
+    info!(parsed_req_body, "parsed request body");
 
     let resp_body = EchoResponse {
         method: req_method,
