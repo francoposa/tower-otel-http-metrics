@@ -30,7 +30,7 @@ async fn main() {
     // https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/context/api-propagators.md
     global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
     // opentelemetry pipeline for sending to jaeger collector; port matches default jaeger docker setup
-    // this pipeline will just log connection errors to stdout if it cannot reach the collector endpoint
+    // this pipeline will just log connection errors to stderr if it cannot reach the collector endpoint
     let tracer = opentelemetry_jaeger::new_pipeline()
         .with_collector_endpoint("http://localhost:4318")
         .install_simple()
