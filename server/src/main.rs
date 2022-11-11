@@ -7,6 +7,7 @@ use axum::{
     Json, Router,
 };
 use opentelemetry::global;
+use opentelemetry::runtime::Tokio;
 use opentelemetry::sdk::export::trace::stdout as opentelemetry_stdout;
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -14,7 +15,10 @@ use tower_http::classify::StatusInRangeAsFailures;
 use tower_http::trace::TraceLayer;
 use tracing::level_filters::LevelFilter;
 use tracing::{info, instrument};
+use tracing_bunyan_formatter::BunyanFormattingLayer;
 use tracing_subscriber::{prelude::*, Registry};
+
+const SERVICE_NAME: &str = "axum-echo-server-logging-tracing";
 
 #[tokio::main]
 async fn main() {
@@ -31,22 +35,24 @@ async fn main() {
     global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
     // opentelemetry pipeline for sending to jaeger collector; port matches default jaeger docker setup
     // this pipeline will just log connection errors to stderr if it cannot reach the collector endpoint
-    let tracer = opentelemetry_jaeger::new_pipeline()
-        .with_collector_endpoint("http://localhost:4318")
-        .install_simple()
+    let tracer = opentelemetry_jaeger::new_agent_pipeline()
+        .with_service_name(SERVICE_NAME)
+        .with_endpoint("localhost:6831")
+        .with_auto_split_batch(true)
+        .install_batch(Tokio)
         .unwrap();
     // use this stdout pipeline instead to debug or view the opentelemetry data without a collector
     // let tracer = opentelemetry_stdout::new_pipeline().install_simple();
     let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
 
-    // stdout log layer for non-tracing logs to be collected into ElasticSearch or similar
-    let stdout_log_layer = tracing_subscriber::fmt::layer()
-        .json()
-        .with_filter(LevelFilter::DEBUG);
+    // stdout/stderr log layer for non-tracing logs to be collected into ElasticSearch or similar
+    let std_stream_bunyan_format_layer =
+        BunyanFormattingLayer::new(SERVICE_NAME.into(), std::io::stdout)
+            .with_filter(LevelFilter::DEBUG);
 
     let subscriber = Registry::default()
         .with(file_writer_layer)
-        .with(stdout_log_layer)
+        .with(std_stream_bunyan_format_layer)
         .with(telemetry);
 
     tracing::subscriber::set_global_default(subscriber).unwrap();
