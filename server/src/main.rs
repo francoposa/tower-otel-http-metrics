@@ -6,6 +6,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use hyper::server::Server;
 use opentelemetry::global;
 use opentelemetry::runtime::Tokio;
 use opentelemetry::sdk::export::trace::stdout as opentelemetry_stdout;
@@ -65,7 +66,7 @@ async fn main() {
             StatusInRangeAsFailures::new(400..=599).into_make_classifier(),
         ));
 
-    axum::Server::bind(&"127.0.0.1:8080".parse().unwrap())
+    Server::bind(&"127.0.0.1:8080".parse().unwrap())
         .serve(app.into_make_service())
         .await
         .unwrap();
