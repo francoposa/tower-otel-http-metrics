@@ -12,7 +12,7 @@ opentelemetry = { version = "*", default-features = false }
 opentelemetry-jaeger = { version = "*", features = ["rt-tokio"], default-features = false }
 serde = { version = "1.*", features = ["serde_derive"], default-features = false }
 serde_json = { version = "1.*", default-features = false }
-tokio = { version = "*", features = ["rt-multi-thread", "macros"], default-features = false }
+tokio = { version = "*", features = ["macros", "rt-multi-thread"], default-features = false }
 tower = { version = "*", default-features = false }
 tower-http = { version = "*", features = ["trace"], default-features = false }
 tracing = { version = "*", features = ["attributes"], default-features = false }

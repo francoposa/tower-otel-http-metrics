@@ -1,17 +1,18 @@
 use std::collections::HashMap;
 
 use axum::{
-    body::Body,
-    http::Request,
-    routing::{get, post},
-    Json, Router,
+    body::Bytes,
+    extract::Json,
+    http::Method,
+    routing::{get, post, put, Router},
 };
 use hyper::server::Server;
+use hyper::HeaderMap;
 use opentelemetry::global;
 use opentelemetry::runtime::Tokio;
 use opentelemetry::sdk::export::trace::stdout as opentelemetry_stdout;
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 use tower_http::classify::StatusInRangeAsFailures;
 use tower_http::trace::TraceLayer;
 use tracing::level_filters::LevelFilter;
@@ -61,6 +62,10 @@ async fn main() {
     let app = Router::new()
         .route("/", get(echo))
         .route("/", post(echo))
+        .route("/", put(echo))
+        .route("/json", get(echo_json))
+        .route("/json", post(echo_json))
+        .route("/json", put(echo_json))
         .layer(TraceLayer::new(
             // by default the tower http trace layer only classifies 5xx errors as failures
             StatusInRangeAsFailures::new(400..=599).into_make_classifier(),
@@ -72,41 +77,50 @@ async fn main() {
         .unwrap();
 }
 
+#[instrument]
+pub async fn echo(method: Method, headers: HeaderMap, bytes: Bytes) -> Bytes {
+    let parsed_req_headers = parse_request_headers(headers);
+    info!(
+        req.method = %method,
+        req.headers = ?parsed_req_headers,
+        "parsed request headers",
+    );
+    bytes
+}
+
 #[derive(Serialize, Debug)]
-struct EchoResponse {
+struct EchoJSONResponse {
     method: String,
     headers: HashMap<String, String>,
-    body: String,
+    body: Value,
 }
 
 #[instrument]
-async fn echo(request: Request<Body>) -> Json<Value> {
-    let (req_parts, req_body) = request.into_parts();
+async fn echo_json(
+    method: Method,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Json<EchoJSONResponse> {
+    let req_method = method.to_string();
+    let parsed_req_headers = parse_request_headers(headers);
+    info!(
+        req.method = req_method,
+        req.headers = ?parsed_req_headers,
+        "parsed request headers",
+    );
 
-    let req_method = req_parts.method.to_string();
-
-    let parsed_req_headers = req_parts
-        .headers
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or_default().to_string()))
-        .collect::<HashMap<String, String>>();
-
-    let parsed_req_body = match hyper::body::to_bytes(req_body).await {
-        Ok(bytes) => match String::from_utf8(bytes.to_vec()) {
-            Ok(str) => str,
-            Err(_) => String::new(),
-        },
-        Err(_) => String::new(),
-    };
-
-    // example of info log in instrumented fn with KV fields; key name inferred from variable name
-    info!(parsed_req_body, "parsed request body");
-
-    let resp_body = EchoResponse {
+    let resp_body = EchoJSONResponse {
         method: req_method,
         headers: parsed_req_headers,
-        body: parsed_req_body,
+        body,
     };
 
-    Json(json!(resp_body))
+    Json(resp_body)
+}
+
+fn parse_request_headers(headers: HeaderMap) -> HashMap<String, String> {
+    headers
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or_default().to_string()))
+        .collect()
 }
