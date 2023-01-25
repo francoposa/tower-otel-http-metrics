@@ -17,7 +17,7 @@ use tower_http::classify::StatusInRangeAsFailures;
 use tower_http::trace::TraceLayer;
 use tracing::level_filters::LevelFilter;
 use tracing::{info, instrument};
-use tracing_bunyan_formatter::BunyanFormattingLayer;
+use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_subscriber::{prelude::*, Registry};
 
 const SERVICE_NAME: &str = "axum-echo-server-logging-tracing";
@@ -50,10 +50,11 @@ async fn main() {
     // stdout/stderr log layer for non-tracing logs to be collected into ElasticSearch or similar
     let std_stream_bunyan_format_layer =
         BunyanFormattingLayer::new(SERVICE_NAME.into(), std::io::stdout)
-            .with_filter(LevelFilter::DEBUG);
+            .with_filter(LevelFilter::INFO);
 
     let subscriber = Registry::default()
         .with(file_writer_layer)
+        .with(JsonStorageLayer)
         .with(std_stream_bunyan_format_layer)
         .with(telemetry);
 
@@ -77,9 +78,10 @@ async fn main() {
         .unwrap();
 }
 
-#[instrument]
+#[instrument(skip(bytes))] // skip large fields like the body
 pub async fn echo(method: Method, headers: HeaderMap, bytes: Bytes) -> Bytes {
     let parsed_req_headers = parse_request_headers(headers);
+    // method and headers get logged by the instrument macro; this is just an example
     info!(
         req.method = %method,
         req.headers = ?parsed_req_headers,
@@ -95,7 +97,7 @@ struct EchoJSONResponse {
     body: Value,
 }
 
-#[instrument]
+#[instrument(skip(body))] // skip large fields like the body
 async fn echo_json(
     method: Method,
     headers: HeaderMap,
@@ -103,6 +105,7 @@ async fn echo_json(
 ) -> Json<EchoJSONResponse> {
     let req_method = method.to_string();
     let parsed_req_headers = parse_request_headers(headers);
+    // method and headers get logged by the instrument macro; this is just an example
     info!(
         req.method = req_method,
         req.headers = ?parsed_req_headers,
