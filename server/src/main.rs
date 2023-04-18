@@ -50,7 +50,7 @@ async fn main() {
     // stdout/stderr log layer for non-tracing logs to be collected into ElasticSearch or similar
     let std_stream_bunyan_format_layer =
         BunyanFormattingLayer::new(SERVICE_NAME.into(), std::io::stdout)
-            .with_filter(LevelFilter::DEBUG);
+            .with_filter(LevelFilter::INFO);
 
     let subscriber = Registry::default()
         .with(file_writer_layer)
@@ -81,6 +81,7 @@ async fn main() {
 #[instrument(skip(headers, bytes), fields(req.body.len = bytes.len()))]
 pub async fn echo(method: Method, headers: HeaderMap, bytes: Bytes) -> Bytes {
     let parsed_req_headers = parse_request_headers(headers);
+    // method and headers get logged by the instrument macro; this is just an example
     info!(
         req.method = %method,
         req.headers = ?parsed_req_headers,
@@ -104,6 +105,7 @@ async fn echo_json(
 ) -> Json<EchoJSONResponse> {
     let req_method = method.to_string();
     let parsed_req_headers = parse_request_headers(headers);
+    // method and headers get logged by the instrument macro; this is just an example
     info!(
         req.method = req_method,
         req.headers = ?parsed_req_headers,
