@@ -17,7 +17,7 @@ use tower_http::classify::StatusInRangeAsFailures;
 use tower_http::trace::TraceLayer;
 use tracing::level_filters::LevelFilter;
 use tracing::{info, instrument};
-use tracing_bunyan_formatter::BunyanFormattingLayer;
+use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_subscriber::{prelude::*, Registry};
 
 const SERVICE_NAME: &str = "axum-echo-server-logging-tracing";
@@ -54,6 +54,7 @@ async fn main() {
 
     let subscriber = Registry::default()
         .with(file_writer_layer)
+        .with(JsonStorageLayer)
         .with(std_stream_bunyan_format_layer)
         .with(telemetry);
 
@@ -77,7 +78,7 @@ async fn main() {
         .unwrap();
 }
 
-#[instrument]
+#[instrument(skip(headers, bytes), fields(req.body.len = bytes.len()))]
 pub async fn echo(method: Method, headers: HeaderMap, bytes: Bytes) -> Bytes {
     let parsed_req_headers = parse_request_headers(headers);
     info!(
@@ -95,7 +96,7 @@ struct EchoJSONResponse {
     body: Value,
 }
 
-#[instrument]
+#[instrument(skip(headers, body), fields(req.headers.content_length = headers.len()))]
 async fn echo_json(
     method: Method,
     headers: HeaderMap,
