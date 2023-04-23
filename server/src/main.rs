@@ -8,9 +8,11 @@ use axum::{
 };
 use hyper::server::Server;
 use hyper::HeaderMap;
-use opentelemetry::global;
-use opentelemetry::runtime::Tokio;
 use opentelemetry::sdk::export::trace::stdout as opentelemetry_stdout;
+use opentelemetry::sdk::Resource;
+use opentelemetry::{global, KeyValue};
+use opentelemetry_otlp;
+use opentelemetry_otlp::WithExportConfig;
 use serde::Serialize;
 use serde_json::Value;
 use tower_http::classify::StatusInRangeAsFailures;
@@ -31,21 +33,27 @@ async fn main() {
         .json()
         .with_writer(file_writer);
 
-    // opentelemetry-formatted tracing layer to send traces to jaeger/jaeger-compatible collector
+    // opentelemetry-formatted tracing layer to send traces to collector
     // see more about opentelemetry propagators here:
     // https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/context/api-propagators.md
-    global::set_text_map_propagator(opentelemetry_jaeger::Propagator::new());
-    // opentelemetry pipeline for sending to jaeger collector; port matches default jaeger docker setup
-    // this pipeline will just log connection errors to stderr if it cannot reach the collector endpoint
-    let tracer = opentelemetry_jaeger::new_agent_pipeline()
-        .with_service_name(SERVICE_NAME)
-        .with_endpoint("localhost:6831")
-        .with_auto_split_batch(true)
-        .install_batch(Tokio)
+    global::set_text_map_propagator(opentelemetry::sdk::propagation::TraceContextPropagator::new());
+    let otel_pipeline = opentelemetry_otlp::new_pipeline()
+        .tracing()
+        .with_exporter(
+            opentelemetry_otlp::new_exporter()
+                .tonic()
+                .with_endpoint("http://localhost:4317"),
+        )
+        .with_trace_config(
+            opentelemetry::sdk::trace::config().with_resource(Resource::new(vec![KeyValue::new(
+                opentelemetry_semantic_conventions::resource::SERVICE_NAME,
+                SERVICE_NAME,
+            )])),
+        );
+    let otel_tracer = otel_pipeline
+        .install_batch(opentelemetry::runtime::Tokio)
         .unwrap();
-    // use this stdout pipeline instead to debug or view the opentelemetry data without a collector
-    // let tracer = opentelemetry_stdout::new_pipeline().install_simple();
-    let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
+    let otel_layer = tracing_opentelemetry::layer().with_tracer(otel_tracer);
 
     // stdout/stderr log layer for non-tracing logs to be collected into ElasticSearch or similar
     let std_stream_bunyan_format_layer =
@@ -56,7 +64,7 @@ async fn main() {
         .with(file_writer_layer)
         .with(JsonStorageLayer)
         .with(std_stream_bunyan_format_layer)
-        .with(telemetry);
+        .with(otel_layer);
 
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
@@ -72,7 +80,7 @@ async fn main() {
             StatusInRangeAsFailures::new(400..=599).into_make_classifier(),
         ));
 
-    Server::bind(&"127.0.0.1:8080".parse().unwrap())
+    Server::bind(&"0.0.0.0:8080".parse().unwrap())
         .serve(app.into_make_service())
         .await
         .unwrap();

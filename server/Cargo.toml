@@ -1,15 +1,15 @@
 [package]
 name = "echo-server"
-version = "0.1.0-alpha.0"
 edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+version = "0.1.0-alpha.0"
 
 [dependencies]
 axum = { features = ["http1", "http2", "json"], version = "0.6.*", default-features = false }
 hyper = { version = "*", features = ["tcp", "server"], default-features = false }
-opentelemetry = { version = "*", default-features = false }
-opentelemetry-jaeger = { version = "*", features = ["rt-tokio"], default-features = false }
+opentelemetry = { version = "0.18.0", features = ["rt-tokio"], default-features = false }
+opentelemetry_api = "*"
+opentelemetry-semantic-conventions = "*"
+opentelemetry-otlp = { version = "*", features = ["grpc-tonic"] }
 serde = { version = "1.*", features = ["serde_derive"], default-features = false }
 serde_json = { version = "1.*", default-features = false }
 tokio = { version = "*", features = ["macros", "rt-multi-thread"], default-features = false }
