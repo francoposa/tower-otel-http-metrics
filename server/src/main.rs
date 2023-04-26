@@ -6,19 +6,18 @@ use axum::{
     http::Method,
     routing::{get, post, put, Router},
 };
-use hyper::server::Server;
 use hyper::HeaderMap;
+use hyper::server::Server;
+use opentelemetry::{global, KeyValue};
 use opentelemetry::sdk::export::trace::stdout as opentelemetry_stdout;
 use opentelemetry::sdk::Resource;
-use opentelemetry::{global, KeyValue};
-use opentelemetry_otlp;
-use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_otlp::{self, WithExportConfig};
 use serde::Serialize;
 use serde_json::Value;
 use tower_http::classify::StatusInRangeAsFailures;
 use tower_http::trace::TraceLayer;
-use tracing::level_filters::LevelFilter;
 use tracing::{info, instrument};
+use tracing::level_filters::LevelFilter;
 use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_subscriber::{prelude::*, Registry};
 
@@ -45,10 +44,11 @@ async fn main() {
                 .with_endpoint("http://localhost:4317"),
         )
         .with_trace_config(
-            opentelemetry::sdk::trace::config().with_resource(Resource::new(vec![KeyValue::new(
-                opentelemetry_semantic_conventions::resource::SERVICE_NAME,
-                SERVICE_NAME,
-            )])),
+            opentelemetry::sdk::trace::config().with_resource(
+                Resource::new(vec![KeyValue::new(
+                    opentelemetry_semantic_conventions::resource::SERVICE_NAME,
+                    SERVICE_NAME,
+                )])),
         );
     let otel_tracer = otel_pipeline
         .install_batch(opentelemetry::runtime::Tokio)
