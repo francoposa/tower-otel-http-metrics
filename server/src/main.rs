@@ -32,10 +32,18 @@ async fn main() {
         .json()
         .with_writer(file_writer);
 
+    //
     // opentelemetry-formatted tracing layer to send traces to collector
+    //
+
     // see more about opentelemetry propagators here:
     // https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/context/api-propagators.md
     global::set_text_map_propagator(opentelemetry::sdk::propagation::TraceContextPropagator::new());
+
+    // use this stdout pipeline instead to debug or view the opentelemetry data without a collector
+    // let otel_tracer = opentelemetry_stdout::new_pipeline().install_simple();
+
+    // this pipeline will log connection errors to stderr if it cannot reach the collector endpoint
     let otel_pipeline = opentelemetry_otlp::new_pipeline()
         .tracing()
         .with_exporter(
@@ -57,12 +65,12 @@ async fn main() {
 
     // stdout/stderr log layer for non-tracing logs to be collected into ElasticSearch or similar
     let std_stream_bunyan_format_layer =
-        BunyanFormattingLayer::new(SERVICE_NAME.into(), std::io::stdout)
+        BunyanFormattingLayer::new(SERVICE_NAME.into(), std::io::stderr)
             .with_filter(LevelFilter::INFO);
 
     let subscriber = Registry::default()
         .with(file_writer_layer)
-        .with(JsonStorageLayer)
+        .with(JsonStorageLayer) // stores fields across spans for the bunyan formatter
         .with(std_stream_bunyan_format_layer)
         .with(otel_layer);
 
