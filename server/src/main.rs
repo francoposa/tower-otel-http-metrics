@@ -8,8 +8,11 @@ use axum::{
 };
 use hyper::HeaderMap;
 use hyper::server::Server;
+use metrics_exporter_prometheus::PrometheusBuilder;
 use opentelemetry::{global, KeyValue};
+use opentelemetry::sdk::export::metrics::aggregation::stateless_temporality_selector;
 use opentelemetry::sdk::export::trace::stdout as opentelemetry_stdout;
+use opentelemetry::sdk::metrics::selectors::simple::inexpensive;
 use opentelemetry::sdk::Resource;
 use opentelemetry_otlp::{self, WithExportConfig};
 use serde::Serialize;
@@ -21,7 +24,7 @@ use tracing::level_filters::LevelFilter;
 use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_subscriber::{prelude::*, Registry};
 
-const SERVICE_NAME: &str = "axum-echo-server-logging-tracing";
+const SERVICE_NAME: &str = "echo-server-logging-metrics-tracing";
 
 #[tokio::main]
 async fn main() {
@@ -76,6 +79,27 @@ async fn main() {
 
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
+    // let meter = opentelemetry_otlp::new_pipeline()
+    //     .metrics(
+    //         inexpensive(),
+    //         stateless_temporality_selector(),
+    //         opentelemetry::runtime::Tokio,
+    //     )
+    //     .with_exporter(
+    //         opentelemetry_otlp::new_exporter()
+    //             .tonic()
+    //             .with_endpoint("http://localhost:4317"),
+    //     )
+    //     .build()
+    //     .unwrap();
+
+    let builder = PrometheusBuilder::new()
+        .install()
+        .unwrap();
+
+    let counter = metrics::register_counter!("some_metric_name", "service" => SERVICE_NAME);
+    counter.absolute(42);
+
     let app = Router::new()
         .route("/", get(echo))
         .route("/", post(echo))
@@ -87,6 +111,8 @@ async fn main() {
             // by default the tower http trace layer only classifies 5xx errors as failures
             StatusInRangeAsFailures::new(400..=599).into_make_classifier(),
         ));
+
+    info!("starting {}...", SERVICE_NAME);
 
     Server::bind(&"0.0.0.0:8080".parse().unwrap())
         .serve(app.into_make_service())
