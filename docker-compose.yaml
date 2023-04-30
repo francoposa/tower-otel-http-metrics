@@ -3,14 +3,14 @@ networks:
     name: "echo-server"
 
 services:
-  echo-server:
-    build:
-      context: .
-    container_name: echo-server
-    network_mode: host
-    #      - host
-    ports:
-      - 8080:8080
+  #  echo-server:
+  #    build:
+  #      context: .
+  #    container_name: echo-server
+  #    network_mode: host
+  #    #      - host
+  #    ports:
+  #      - 8080:8080
 
   prometheus:
     image: prom/prometheus:latest

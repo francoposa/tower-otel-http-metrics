@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use axum::{
     body::Bytes,
-    extract::Json,
+    extract::{Json, MatchedPath},
     http::Method,
     routing::{get, post, put, Router},
 };
@@ -10,9 +10,7 @@ use hyper::HeaderMap;
 use hyper::server::Server;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use opentelemetry::{global, KeyValue};
-use opentelemetry::sdk::export::metrics::aggregation::stateless_temporality_selector;
 use opentelemetry::sdk::export::trace::stdout as opentelemetry_stdout;
-use opentelemetry::sdk::metrics::selectors::simple::inexpensive;
 use opentelemetry::sdk::Resource;
 use opentelemetry_otlp::{self, WithExportConfig};
 use serde::Serialize;
@@ -25,6 +23,11 @@ use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_subscriber::{prelude::*, Registry};
 
 const SERVICE_NAME: &str = "echo-server-logging-metrics-tracing";
+
+const REQUEST_COUNT_METRIC_NAME: &str = "request_count";
+const METRIC_LABEL_SERVICE: &str = "service";
+const METRIC_LABEL_REQUEST_ENDPOINT: &str = "endpoint";
+const METRIC_LABEL_REQUEST_METHOD: &str = "method";
 
 #[tokio::main]
 async fn main() {
@@ -56,10 +59,15 @@ async fn main() {
         )
         .with_trace_config(
             opentelemetry::sdk::trace::config().with_resource(
-                Resource::new(vec![KeyValue::new(
-                    opentelemetry_semantic_conventions::resource::SERVICE_NAME,
-                    SERVICE_NAME,
-                )])),
+                Resource::new(
+                    vec![
+                        KeyValue::new(
+                            opentelemetry_semantic_conventions::resource::SERVICE_NAME,
+                            SERVICE_NAME,
+                        )
+                    ]
+                )
+            ),
         );
     let otel_tracer = otel_pipeline
         .install_batch(opentelemetry::runtime::Tokio)
@@ -93,12 +101,7 @@ async fn main() {
     //     .build()
     //     .unwrap();
 
-    let builder = PrometheusBuilder::new()
-        .install()
-        .unwrap();
-
-    let counter = metrics::register_counter!("some_metric_name", "service" => SERVICE_NAME);
-    counter.absolute(42);
+    PrometheusBuilder::new().install().unwrap();
 
     let app = Router::new()
         .route("/", get(echo))
@@ -121,7 +124,18 @@ async fn main() {
 }
 
 #[instrument(skip(headers, bytes), fields(req.body.len = bytes.len()))]
-pub async fn echo(method: Method, headers: HeaderMap, bytes: Bytes) -> Bytes {
+pub async fn echo(
+    matched_path: MatchedPath,
+    method: Method,
+    headers: HeaderMap,
+    bytes: Bytes,
+) -> Bytes {
+    metrics::increment_counter!(
+        String::from(REQUEST_COUNT_METRIC_NAME),
+        METRIC_LABEL_SERVICE => SERVICE_NAME,
+        METRIC_LABEL_REQUEST_ENDPOINT => String::from(matched_path.as_str()),
+        METRIC_LABEL_REQUEST_METHOD => String::from(method.as_str()),
+    );
     let parsed_req_headers = parse_request_headers(headers);
     // method and headers get logged by the instrument macro; this is just an example
     info!(
@@ -141,10 +155,17 @@ struct EchoJSONResponse {
 
 #[instrument(skip(headers, body), fields(req.headers.content_length = headers.len()))]
 async fn echo_json(
+    matched_path: MatchedPath,
     method: Method,
     headers: HeaderMap,
     Json(body): Json<Value>,
 ) -> Json<EchoJSONResponse> {
+    metrics::increment_counter!(
+        String::from(REQUEST_COUNT_METRIC_NAME),
+        METRIC_LABEL_SERVICE => SERVICE_NAME,
+        METRIC_LABEL_REQUEST_ENDPOINT => String::from(matched_path.as_str()),
+        METRIC_LABEL_REQUEST_METHOD => String::from(method.as_str()),
+    );
     let req_method = method.to_string();
     let parsed_req_headers = parse_request_headers(headers);
     // method and headers get logged by the instrument macro; this is just an example

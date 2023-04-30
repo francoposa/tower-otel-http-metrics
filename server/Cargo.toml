@@ -4,7 +4,7 @@ edition = "2021"
 version = "0.1.0-alpha.0"
 
 [dependencies]
-axum = { features = ["http1", "http2", "json"], version = "0.6.*", default-features = false }
+axum = { features = ["http1", "http2", "json", "matched-path"], version = "0.6.*", default-features = false }
 hyper = { version = "*", features = ["tcp", "server"], default-features = false }
 metrics = "*"
 metrics-exporter-prometheus = "0.12.0"
