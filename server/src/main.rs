@@ -22,7 +22,7 @@ use tracing::level_filters::LevelFilter;
 use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_subscriber::{prelude::*, Registry};
 
-const SERVICE_NAME: &str = "echo-server-logging-metrics-tracing";
+const SERVICE_NAME: &str = "echo-server";
 
 const REQUEST_COUNT_METRIC_NAME: &str = "request_count";
 const METRIC_LABEL_SERVICE: &str = "service";
