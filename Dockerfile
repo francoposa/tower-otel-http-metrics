@@ -12,6 +12,7 @@ WORKDIR /home/echo-server/server
 RUN cargo build --locked --release
 
 FROM debian:bullseye-slim
+LABEL org.opencontainers.image.source=https://github.com/francoposa/echo-server-rust-logging-metrics-tracing/echo-server
 
 COPY --from=builder /home/echo-server/server/target/release/echo-server-logging-metrics-tracing /usr/local/bin/echo-server
 CMD ["echo-server"]
