@@ -5,9 +5,10 @@ RUN apt-get update \
     && apt-get install -y protobuf-compiler \
     && rm -rf /var/lib/apt/lists/*
 
-COPY ./server/src/ ./server/src/
 COPY ./server/Cargo.toml ./server/Cargo.toml
 COPY ./server/Cargo.lock ./server/Cargo.lock
+COPY ./server/src/ ./server/src/
+
 WORKDIR /home/echo-server/server
 RUN cargo build --locked --release
 
