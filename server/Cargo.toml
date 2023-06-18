@@ -20,5 +20,5 @@ tower-http = { version = "*", features = ["trace"], default-features = false }
 tracing = { version = "*", features = ["attributes"], default-features = false }
 tracing-appender = { version = "*", default-features = false }
 tracing-bunyan-formatter = { version = "*", default-features = false }
-tracing-opentelemetry = { version = "0.18", default-features = false }
+tracing-opentelemetry = { version = "0.18", features = ["metrics"], default-features = false }
 tracing-subscriber = { version = "*", features = ["json"], default-features = false }
