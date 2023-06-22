@@ -1,0 +1,40 @@
+---
+extensions:
+  basicauth/otlp:
+    client_auth:
+      username: "664205"
+      password: "<grafana cloud api token>"
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+exporters:
+  logging:
+    loglevel: debug
+  otlphttp:
+    endpoint: https://otlp-gateway-prod-us-central-0.grafana.net/otlp
+    auth:
+      authenticator: basicauth/otlp
+  prometheusremotewrite:
+    # not in use, now that pushing to Grafana OTEL endpoint is working
+    endpoint: https://prometheus-us-central1.grafana.net/api/prom/push
+    auth:
+      authenticator: basicauth/otlp
+    resource_to_telemetry_conversion:
+      enabled: true  # Convert resource attributes to metric labels
+
+service:
+  extensions: [basicauth/otlp]
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      exporters: [logging, otlphttp]
+    traces:
+      receivers: [otlp]
+      exporters: [logging]
+    logs:
+      receivers: [otlp]
+      exporters: [logging]

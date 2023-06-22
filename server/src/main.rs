@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::Duration;
 
 use axum::{
     body::Bytes,
@@ -8,12 +9,13 @@ use axum::{
 };
 use hyper::HeaderMap;
 use hyper::server::Server;
-use metrics_exporter_prometheus::PrometheusBuilder;
 use opentelemetry::{global, KeyValue};
 use opentelemetry::sdk::export::metrics::aggregation::stateless_temporality_selector;
 use opentelemetry::sdk::export::trace::stdout as opentelemetry_stdout;
 use opentelemetry::sdk::metrics::selectors::simple::inexpensive;
 use opentelemetry::sdk::Resource;
+use opentelemetry::sdk::resource::{EnvResourceDetector, SdkProvidedResourceDetector, TelemetryResourceDetector};
+use opentelemetry_api::Context;
 use opentelemetry_otlp::{self, WithExportConfig};
 use serde::Serialize;
 use serde_json::Value;
@@ -51,15 +53,23 @@ async fn main() {
     // use this stdout pipeline instead to debug or view the opentelemetry data without a collector
     // let otel_tracer = opentelemetry_stdout::new_pipeline().install_simple();
 
-    let otlp_resource = Resource::new(
+    let otlp_resource_detected = Resource::from_detectors(
+        Duration::from_secs(3),
         vec![
-            KeyValue::new(
-                opentelemetry_semantic_conventions::resource::SERVICE_NAME,
-                SERVICE_NAME,
-            )
+            Box::new(SdkProvidedResourceDetector),
+            Box::new(EnvResourceDetector::new()),
+            Box::new(TelemetryResourceDetector),
+        ],
+    );
+    let otlp_resource_override = Resource::new(
+        vec![
+            opentelemetry_semantic_conventions::resource::SERVICE_NAME.string(SERVICE_NAME),
         ]
     );
+    let otlp_resource = otlp_resource_detected.merge(&otlp_resource_override);
 
+    // init otel tracing pipeline
+    // https://docs.rs/opentelemetry-otlp/latest/opentelemetry_otlp/#kitchen-sink-full-configuration
     // this pipeline will log connection errors to stderr if it cannot reach the collector endpoint
     let otel_trace_pipeline = opentelemetry_otlp::new_pipeline()
         .tracing()
@@ -78,23 +88,26 @@ async fn main() {
         .unwrap();
     let otel_log_trace_layer = tracing_opentelemetry::layer().with_tracer(otel_tracer);
 
-    // let otel_metrics_controller = ;
-    let otel_metrics_layer = tracing_opentelemetry::MetricsLayer::new(opentelemetry_otlp::new_pipeline()
-        .metrics(
-            inexpensive(),
-            stateless_temporality_selector(),
-            opentelemetry::runtime::Tokio,
-        )
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint("http://localhost:4317"),
-        )
-        .with_resource(
-            otlp_resource.clone(),
-        )
-        .build()
-        .unwrap()
+    // init otel metrics pipeline
+    // https://docs.rs/opentelemetry-otlp/latest/opentelemetry_otlp/#kitchen-sink-full-configuration
+    // this configuration interface is annoyingly slightly different from the tracing one
+    let otel_metrics_layer = tracing_opentelemetry::MetricsLayer::new(
+        opentelemetry_otlp::new_pipeline()
+            .metrics(
+                inexpensive(),
+                stateless_temporality_selector(),
+                opentelemetry::runtime::Tokio,
+            )
+            .with_exporter(
+                opentelemetry_otlp::new_exporter()
+                    .tonic()
+                    .with_endpoint("http://localhost:4317"),
+            )
+            .with_resource(
+                otlp_resource.clone(),
+            )
+            .build()
+            .unwrap()
     );
 
     let subscriber = Registry::default()
@@ -105,8 +118,6 @@ async fn main() {
         .with(otel_metrics_layer);
 
     tracing::subscriber::set_global_default(subscriber).unwrap();
-
-    // PrometheusBuilder::new().install().unwrap();
 
     let app = Router::new()
         .route("/", get(echo))
@@ -136,11 +147,12 @@ pub async fn echo(
     bytes: Bytes,
 ) -> Bytes {
     // ideally this would be in some middleware instead of manually in each handler
-    info!(
-        monotonic_counter.request_count = 1,
-        request.endpoint = String::from(matched_path.as_str()),
-        request.method = String::from(method.as_str()),
-    );
+    let labels = [
+        KeyValue::new("endpoint", String::from(matched_path.as_str())),
+        KeyValue::new("method", String::from(method.as_str())),
+    ];
+    increment_u64_counter("request_count", 1, &labels);
+
     let parsed_req_headers = parse_request_headers(headers);
     // method and headers get logged by the instrument macro; this is just an example
     info!(
@@ -167,11 +179,12 @@ async fn echo_json(
     Json(body): Json<Value>,
 ) -> Json<EchoJSONResponse> {
     // ideally this would be in some middleware instead of manually in each handler
-    info!(
-        monotonic_counter.request_count = 1,
-        request.endpoint = String::from(matched_path.as_str()),
-        request.method = String::from(method.as_str()),
-    );
+    let labels = [
+        KeyValue::new("endpoint", String::from(matched_path.as_str())),
+        KeyValue::new("method", String::from(method.as_str())),
+    ];
+    increment_u64_counter("request_count", 1, &labels);
+
     let req_method = method.to_string();
     let parsed_req_headers = parse_request_headers(headers);
     // method and headers get logged by the instrument macro; this is just an example
@@ -189,6 +202,13 @@ async fn echo_json(
     };
 
     Json(resp_body)
+}
+
+fn increment_u64_counter(name: impl Into<String>, value: u64, labels: &[KeyValue]) {
+    let otel_cx = Context::current();
+    let meter = global::meter(SERVICE_NAME);
+    let counter = meter.u64_counter(name).init();
+    counter.add(&otel_cx, value, labels);
 }
 
 fn parse_request_headers(headers: HeaderMap) -> HashMap<String, String> {
