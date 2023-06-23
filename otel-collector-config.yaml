@@ -14,11 +14,13 @@ receivers:
 exporters:
   logging:
     loglevel: debug
-  otlphttp:
-    endpoint: https://otlp-gateway-prod-us-central-0.grafana.net/otlp
-    auth:
-      authenticator: basicauth/otlp
-  prometheusremotewrite:
+    otlphttp/grafana-cloud:
+      endpoint: https://otlp-gateway-prod-us-central-0.grafana.net/otlp
+      auth:
+        authenticator: basicauth/otlp
+  otlphttp/local:
+    endpoint: http://127.0.0.1:8000/otlp
+  prometheusremotewrite/grafana-cloud:
     # not in use, now that pushing to Grafana OTEL endpoint is working
     endpoint: https://prometheus-us-central1.grafana.net/api/prom/push
     auth:
@@ -27,14 +29,14 @@ exporters:
       enabled: true  # Convert resource attributes to metric labels
 
 service:
-  extensions: [basicauth/otlp]
+  extensions: [ basicauth/otlp ]
   pipelines:
     metrics:
-      receivers: [otlp]
-      exporters: [logging, otlphttp]
+      receivers: [ otlp ]
+      exporters: [ logging, otlphttp/local ]
     traces:
-      receivers: [otlp]
-      exporters: [logging]
+      receivers: [ otlp ]
+      exporters: [ logging ]
     logs:
-      receivers: [otlp]
-      exporters: [logging]
+      receivers: [ otlp ]
+      exporters: [ logging ]

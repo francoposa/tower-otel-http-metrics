@@ -3,12 +3,11 @@ networks:
     name: "echo-server"
 
 services:
-  #  echo-server:
-  #    build:
-  #      context: .
-  #    container_name: echo-server
-  #    network_mode: host
-  #    #      - host
+  echo-server:
+    build:
+      context: .
+    container_name: echo-server
+    network_mode: host
   #    ports:
   #      - 8080:8080
 
@@ -18,8 +17,9 @@ services:
       - --config=/etc/otel-collector-config.yaml
     volumes:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
-    ports:
-      - 4317:4317
+    network_mode: host
+    #    ports:
+    #      - 4317:4317
 
   prometheus:
     image: prom/prometheus:latest
@@ -29,9 +29,8 @@ services:
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
     network_mode: host
-    #      - host
-    ports:
-      - 9090:9090
+    #    ports:
+    #      - 9090:9090
 
   jaeger:
     image: jaegertracing/all-in-one:latest  # must be >=1.35 for OTLP support
@@ -39,8 +38,7 @@ services:
     environment:
       - COLLECTOR_OTLP_ENABLED=true
     network_mode: host
-    #      - host
-    ports:
-      - 4317:4317
-      - 4318:4318
-      - 16686:16686
+    #    ports:
+    #      - 4317:4317
+    #      - 4318:4318
+    #      - 16686:16686
