@@ -14,10 +14,10 @@ receivers:
 exporters:
   logging:
     loglevel: debug
-    otlphttp/grafana-cloud:
-      endpoint: https://otlp-gateway-prod-us-central-0.grafana.net/otlp
-      auth:
-        authenticator: basicauth/otlp
+  otlphttp/grafana-cloud:
+    endpoint: https://otlp-gateway-prod-us-central-0.grafana.net/otlp
+    auth:
+      authenticator: basicauth/otlp
   otlphttp/local:
     endpoint: http://127.0.0.1:8000/otlp
   prometheusremotewrite/grafana-cloud:

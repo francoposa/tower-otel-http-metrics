@@ -7,22 +7,24 @@ use axum::{
     http::Method,
     routing::{get, post, put, Router},
 };
-use hyper::HeaderMap;
 use hyper::server::Server;
-use opentelemetry::{global, KeyValue};
+use hyper::HeaderMap;
 use opentelemetry::sdk::export::metrics::aggregation::stateless_temporality_selector;
 use opentelemetry::sdk::export::trace::stdout as opentelemetry_stdout;
 use opentelemetry::sdk::metrics::selectors::simple::inexpensive;
+use opentelemetry::sdk::resource::{
+    EnvResourceDetector, SdkProvidedResourceDetector, TelemetryResourceDetector,
+};
 use opentelemetry::sdk::Resource;
-use opentelemetry::sdk::resource::{EnvResourceDetector, SdkProvidedResourceDetector, TelemetryResourceDetector};
+use opentelemetry::{global, KeyValue};
 use opentelemetry_api::Context;
 use opentelemetry_otlp::{self, WithExportConfig};
 use serde::Serialize;
 use serde_json::Value;
 use tower_http::classify::StatusInRangeAsFailures;
 use tower_http::trace::TraceLayer;
-use tracing::{info, instrument};
 use tracing::level_filters::LevelFilter;
+use tracing::{info, instrument};
 use tracing_bunyan_formatter::{BunyanFormattingLayer, JsonStorageLayer};
 use tracing_subscriber::{prelude::*, Registry};
 
@@ -61,11 +63,9 @@ async fn main() {
             Box::new(TelemetryResourceDetector),
         ],
     );
-    let otlp_resource_override = Resource::new(
-        vec![
-            opentelemetry_semantic_conventions::resource::SERVICE_NAME.string(SERVICE_NAME),
-        ]
-    );
+    let otlp_resource_override = Resource::new(vec![
+        opentelemetry_semantic_conventions::resource::SERVICE_NAME.string(SERVICE_NAME),
+    ]);
     let otlp_resource = otlp_resource_detected.merge(&otlp_resource_override);
 
     // init otel tracing pipeline
@@ -79,9 +79,7 @@ async fn main() {
                 .with_endpoint("http://localhost:4317"),
         )
         .with_trace_config(
-            opentelemetry::sdk::trace::config().with_resource(
-                otlp_resource.clone(),
-            ),
+            opentelemetry::sdk::trace::config().with_resource(otlp_resource.clone()),
         );
     let otel_tracer = otel_trace_pipeline
         .install_batch(opentelemetry::runtime::Tokio)
@@ -103,11 +101,9 @@ async fn main() {
                     .tonic()
                     .with_endpoint("http://localhost:4317"),
             )
-            .with_resource(
-                otlp_resource.clone(),
-            )
+            .with_resource(otlp_resource.clone())
             .build()
-            .unwrap()
+            .unwrap(),
     );
 
     let subscriber = Registry::default()
