@@ -129,7 +129,7 @@ async fn main() {
 
     info!("starting {}...", SERVICE_NAME);
 
-    Server::bind(&"0.0.0.0:8080".parse().unwrap())
+    Server::bind(&"0.0.0.0:8081".parse().unwrap())
         .serve(app.into_make_service())
         .await
         .unwrap();

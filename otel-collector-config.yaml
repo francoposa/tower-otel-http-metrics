@@ -2,8 +2,8 @@
 extensions:
   basicauth/otlp:
     client_auth:
-      username: "664205"
-      password: "<grafana cloud api token>"
+      username: 664205
+      password: ${GRAFANA_CLOUD_API_KEY}
 
 receivers:
   otlp:
@@ -18,8 +18,11 @@ exporters:
     endpoint: https://otlp-gateway-prod-us-central-0.grafana.net/otlp
     auth:
       authenticator: basicauth/otlp
-  otlphttp/local:
+  otlphttp/mimir-local:
     endpoint: http://127.0.0.1:8000/otlp
+    # use for multi-tenant Mimir
+    # headers:
+    #  "X-Scope-OrgId": "1"
   prometheusremotewrite/grafana-cloud:
     # not in use, now that pushing to Grafana OTEL endpoint is working
     endpoint: https://prometheus-us-central1.grafana.net/api/prom/push
@@ -33,7 +36,7 @@ service:
   pipelines:
     metrics:
       receivers: [ otlp ]
-      exporters: [ logging, otlphttp/local ]
+      exporters: [ logging, otlphttp/mimir-local ]
     traces:
       receivers: [ otlp ]
       exporters: [ logging ]
