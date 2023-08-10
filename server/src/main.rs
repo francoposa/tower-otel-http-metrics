@@ -30,6 +30,8 @@ use tracing_subscriber::{prelude::*, Registry};
 
 const SERVICE_NAME: &str = "echo-server";
 
+const HTTP_SERVER_REQUEST_METRIC: &str = "http.server.requests";
+
 #[tokio::main]
 async fn main() {
     // file writer layer to collect all levels of logs, mostly useful for debugging the logging setup
@@ -129,7 +131,7 @@ async fn main() {
 
     info!("starting {}...", SERVICE_NAME);
 
-    Server::bind(&"0.0.0.0:8081".parse().unwrap())
+    Server::bind(&"0.0.0.0:5000".parse().unwrap())
         .serve(app.into_make_service())
         .await
         .unwrap();
@@ -147,7 +149,7 @@ pub async fn echo(
         KeyValue::new("endpoint", String::from(matched_path.as_str())),
         KeyValue::new("method", String::from(method.as_str())),
     ];
-    increment_u64_counter("request_count", 1, &labels);
+    increment_u64_counter(HTTP_SERVER_REQUEST_METRIC, 1, &labels);
 
     let parsed_req_headers = parse_request_headers(headers);
     // method and headers get logged by the instrument macro; this is just an example
@@ -179,7 +181,7 @@ async fn echo_json(
         KeyValue::new("endpoint", String::from(matched_path.as_str())),
         KeyValue::new("method", String::from(method.as_str())),
     ];
-    increment_u64_counter("request_count", 1, &labels);
+    increment_u64_counter(HTTP_SERVER_REQUEST_METRIC, 1, &labels);
 
     let req_method = method.to_string();
     let parsed_req_headers = parse_request_headers(headers);
