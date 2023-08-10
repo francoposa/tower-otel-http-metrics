@@ -48,7 +48,7 @@ exporters:
 service:
   telemetry:
     metrics:
-      # disable metrics export
+      # disable metrics export from collector self-instrumentation
       # tends to collide with other ports when running on host network
       # https://github.com/open-telemetry/opentelemetry-collector/discussions/6547
       level: none
