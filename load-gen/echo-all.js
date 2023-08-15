@@ -3,7 +3,7 @@ import http from 'k6/http';
 // run for an hour in fluctuating 1-minute stages
 let stages = [];
 for (let i = 0; i < 60; i++) {
-    stages.push({duration: '1m', target: Math.floor(Math.random() * 10000)});
+    stages.push({duration: '1m', target: Math.floor(Math.random() * 1000)});
 }
 
 export const options = {
@@ -45,7 +45,6 @@ export default function () {
             'Content-Type': contentType,
         },
     };
-    console.log(method, url, payload, params)
 
     http.request(method, url, payload, params);
 }
