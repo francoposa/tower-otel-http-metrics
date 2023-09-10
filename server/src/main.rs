@@ -1,4 +1,6 @@
+use std::borrow::Cow;
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Duration;
 
 use axum::{
@@ -7,17 +9,14 @@ use axum::{
     http::Method,
     routing::{get, post, put, Router},
 };
+use echo_server_logging_metrics_tracing as lib;
 use hyper::server::Server;
 use hyper::HeaderMap;
-use opentelemetry::sdk::export::metrics::aggregation::stateless_temporality_selector;
-use opentelemetry::sdk::export::trace::stdout as opentelemetry_stdout;
-use opentelemetry::sdk::metrics::selectors::simple::inexpensive;
 use opentelemetry::sdk::resource::{
     EnvResourceDetector, SdkProvidedResourceDetector, TelemetryResourceDetector,
 };
 use opentelemetry::sdk::Resource;
 use opentelemetry::{global, KeyValue};
-use opentelemetry_api::Context;
 use opentelemetry_otlp::{self, WithExportConfig};
 use serde::Serialize;
 use serde_json::Value;
@@ -30,7 +29,9 @@ use tracing_subscriber::{prelude::*, Registry};
 
 const SERVICE_NAME: &str = "echo-server";
 
-const HTTP_SERVER_REQUEST_METRIC: &str = "http.server.requests";
+// attempting to adhere to not-yet-finalized semantic conventions for OTEL metrics:
+// https://opentelemetry.io/docs/specs/otel/metrics/semantic_conventions/#pluralization
+const HTTP_SERVER_REQUEST_COUNT_METRIC: &str = "http.server.request.count";
 
 #[tokio::main]
 async fn main() {
@@ -93,11 +94,7 @@ async fn main() {
     // this configuration interface is annoyingly slightly different from the tracing one
     let otel_metrics_layer = tracing_opentelemetry::MetricsLayer::new(
         opentelemetry_otlp::new_pipeline()
-            .metrics(
-                inexpensive(),
-                stateless_temporality_selector(),
-                opentelemetry::runtime::Tokio,
-            )
+            .metrics(opentelemetry::runtime::Tokio)
             .with_exporter(
                 opentelemetry_otlp::new_exporter()
                     .tonic()
@@ -127,7 +124,14 @@ async fn main() {
         .layer(TraceLayer::new(
             // by default the tower http trace layer only classifies 5xx errors as failures
             StatusInRangeAsFailures::new(400..=599).into_make_classifier(),
-        ));
+        ))
+        .layer(lib::HTTPMetricsLayer {
+            state: Arc::from(echo_server_logging_metrics_tracing::HTTPMetricsLayerState {
+                server_request_count: global::meter(SERVICE_NAME)
+                    .u64_counter(HTTP_SERVER_REQUEST_COUNT_METRIC)
+                    .init(),
+            }),
+        });
 
     info!("starting {}...", SERVICE_NAME);
 
@@ -149,7 +153,7 @@ pub async fn echo(
         KeyValue::new("endpoint", String::from(matched_path.as_str())),
         KeyValue::new("method", String::from(method.as_str())),
     ];
-    increment_u64_counter(HTTP_SERVER_REQUEST_METRIC, 1, &labels);
+    increment_u64_counter(HTTP_SERVER_REQUEST_COUNT_METRIC, 1, &labels);
 
     let parsed_req_headers = parse_request_headers(headers);
     // method and headers get logged by the instrument macro; this is just an example
@@ -181,7 +185,7 @@ async fn echo_json(
         KeyValue::new("endpoint", String::from(matched_path.as_str())),
         KeyValue::new("method", String::from(method.as_str())),
     ];
-    increment_u64_counter(HTTP_SERVER_REQUEST_METRIC, 1, &labels);
+    increment_u64_counter(HTTP_SERVER_REQUEST_COUNT_METRIC, 1, &labels);
 
     let req_method = method.to_string();
     let parsed_req_headers = parse_request_headers(headers);
@@ -202,11 +206,10 @@ async fn echo_json(
     Json(resp_body)
 }
 
-fn increment_u64_counter(name: impl Into<String>, value: u64, labels: &[KeyValue]) {
-    let otel_cx = Context::current();
-    let meter = global::meter(SERVICE_NAME);
-    let counter = meter.u64_counter(name).init();
-    counter.add(&otel_cx, value, labels);
+fn increment_u64_counter(name: impl Into<Cow<'static, str>>, value: u64, labels: &[KeyValue]) {
+    // let meter = global::meter(SERVICE_NAME);
+    // let counter = meter.u64_counter(name).init();
+    // counter.add(value, labels);
 }
 
 fn parse_request_headers(headers: HeaderMap) -> HashMap<String, String> {
