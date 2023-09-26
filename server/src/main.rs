@@ -101,6 +101,7 @@ async fn main() {
                     .with_endpoint("http://localhost:4317"),
             )
             .with_resource(otlp_resource.clone())
+            .with_period(Duration::from_secs(15))
             .build()
             .unwrap(),
     );
