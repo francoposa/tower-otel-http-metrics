@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -12,11 +11,11 @@ use axum::{
 use echo_server_logging_metrics_tracing as lib;
 use hyper::server::Server;
 use hyper::HeaderMap;
+use opentelemetry::global;
 use opentelemetry::sdk::resource::{
     EnvResourceDetector, SdkProvidedResourceDetector, TelemetryResourceDetector,
 };
 use opentelemetry::sdk::Resource;
-use opentelemetry::{global, KeyValue};
 use opentelemetry_otlp::{self, WithExportConfig};
 use serde::Serialize;
 use serde_json::Value;
@@ -29,21 +28,17 @@ use tracing_subscriber::{prelude::*, Registry};
 
 const SERVICE_NAME: &str = "echo-server";
 
-// attempting to adhere to not-yet-finalized semantic conventions for OTEL metrics:
-// https://opentelemetry.io/docs/specs/otel/metrics/semantic_conventions/#pluralization
-const HTTP_SERVER_REQUEST_COUNT_METRIC: &str = "http.server.request.count";
-
 #[tokio::main]
 async fn main() {
     // file writer layer to collect all levels of logs, mostly useful for debugging the logging setup
-    let file_appender = tracing_appender::rolling::minutely("./logs", "trace");
-    let (file_writer, _guard) = tracing_appender::non_blocking(file_appender);
-    let file_writer_layer = tracing_subscriber::fmt::layer()
-        .json()
-        .with_writer(file_writer);
+    // let file_appender = tracing_appender::rolling::minutely("./logs", "trace");
+    // let (file_writer, _guard) = tracing_appender::non_blocking(file_appender);
+    // let file_writer_layer = tracing_subscriber::fmt::layer()
+    //     .json()
+    //     .with_writer(file_writer);
 
     // stdout/stderr log layer for non-tracing logs to be collected into ElasticSearch or similar
-    let std_stream_bunyan_format_layer =
+    let std_stream_log_subscriber_layer =
         BunyanFormattingLayer::new(SERVICE_NAME.into(), std::io::stderr)
             .with_filter(LevelFilter::INFO);
 
@@ -87,12 +82,12 @@ async fn main() {
     let otel_tracer = otel_trace_pipeline
         .install_batch(opentelemetry::runtime::Tokio)
         .unwrap();
-    let otel_log_trace_layer = tracing_opentelemetry::layer().with_tracer(otel_tracer);
+    let otel_log_trace_subscriber_layer = tracing_opentelemetry::layer().with_tracer(otel_tracer);
 
     // init otel metrics pipeline
     // https://docs.rs/opentelemetry-otlp/latest/opentelemetry_otlp/#kitchen-sink-full-configuration
     // this configuration interface is annoyingly slightly different from the tracing one
-    let otel_metrics_layer = tracing_opentelemetry::MetricsLayer::new(
+    let otel_metrics_subscriber_layer = tracing_opentelemetry::MetricsLayer::new(
         opentelemetry_otlp::new_pipeline()
             .metrics(opentelemetry::runtime::Tokio)
             .with_exporter(
@@ -106,14 +101,22 @@ async fn main() {
             .unwrap(),
     );
 
-    let subscriber = Registry::default()
-        .with(file_writer_layer)
+    let telemetry_subscriber = Registry::default()
+        // .with(file_writer_layer)
         .with(JsonStorageLayer) // stores fields across spans for the bunyan formatter
-        .with(std_stream_bunyan_format_layer)
-        .with(otel_log_trace_layer)
-        .with(otel_metrics_layer);
+        .with(std_stream_log_subscriber_layer)
+        .with(otel_log_trace_subscriber_layer)
+        .with(otel_metrics_subscriber_layer);
+    tracing::subscriber::set_global_default(telemetry_subscriber).unwrap();
 
-    tracing::subscriber::set_global_default(subscriber).unwrap();
+    let otel_metrics_service_layer = lib::HTTPMetricsLayer {
+        state: Arc::from(
+            echo_server_logging_metrics_tracing::HTTPMetricsLayerState::new(
+                String::from(SERVICE_NAME),
+                None,
+            ),
+        ),
+    };
 
     let app = Router::new()
         .route("/", get(echo))
@@ -126,13 +129,7 @@ async fn main() {
             // by default the tower http trace layer only classifies 5xx errors as failures
             StatusInRangeAsFailures::new(400..=599).into_make_classifier(),
         ))
-        .layer(lib::HTTPMetricsLayer {
-            state: Arc::from(echo_server_logging_metrics_tracing::HTTPMetricsLayerState {
-                server_request_count: global::meter(SERVICE_NAME)
-                    .u64_counter(HTTP_SERVER_REQUEST_COUNT_METRIC)
-                    .init(),
-            }),
-        });
+        .layer(otel_metrics_service_layer);
 
     info!("starting {}...", SERVICE_NAME);
 
@@ -149,13 +146,6 @@ pub async fn echo(
     headers: HeaderMap,
     bytes: Bytes,
 ) -> Bytes {
-    // ideally this would be in some middleware instead of manually in each handler
-    let labels = [
-        KeyValue::new("endpoint", String::from(matched_path.as_str())),
-        KeyValue::new("method", String::from(method.as_str())),
-    ];
-    increment_u64_counter(HTTP_SERVER_REQUEST_COUNT_METRIC, 1, &labels);
-
     let parsed_req_headers = parse_request_headers(headers);
     // method and headers get logged by the instrument macro; this is just an example
     info!(
@@ -181,13 +171,6 @@ async fn echo_json(
     headers: HeaderMap,
     Json(body): Json<Value>,
 ) -> Json<EchoJSONResponse> {
-    // ideally this would be in some middleware instead of manually in each handler
-    let labels = [
-        KeyValue::new("endpoint", String::from(matched_path.as_str())),
-        KeyValue::new("method", String::from(method.as_str())),
-    ];
-    increment_u64_counter(HTTP_SERVER_REQUEST_COUNT_METRIC, 1, &labels);
-
     let req_method = method.to_string();
     let parsed_req_headers = parse_request_headers(headers);
     // method and headers get logged by the instrument macro; this is just an example
@@ -205,12 +188,6 @@ async fn echo_json(
     };
 
     Json(resp_body)
-}
-
-fn increment_u64_counter(name: impl Into<Cow<'static, str>>, value: u64, labels: &[KeyValue]) {
-    // let meter = global::meter(SERVICE_NAME);
-    // let counter = meter.u64_counter(name).init();
-    // counter.add(value, labels);
 }
 
 fn parse_request_headers(headers: HeaderMap) -> HashMap<String, String> {

@@ -1,3 +1,4 @@
+import { sleep } from 'k6';
 import http from 'k6/http';
 
 // run for an hour in fluctuating 1-minute stages
@@ -47,4 +48,5 @@ export default function () {
     };
 
     http.request(method, url, payload, params);
+    sleep(Math.random() * 10);
 }

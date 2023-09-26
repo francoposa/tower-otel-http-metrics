@@ -12,13 +12,13 @@ use axum::{extract::MatchedPath, http::Request};
 use futures_util::ready;
 use http::HeaderMap;
 use http_body::Body as HTTPBody;
-use opentelemetry::metrics::Counter;
+use opentelemetry::metrics::{Counter, Histogram};
 use opentelemetry::KeyValue;
 use opentelemetry_api::global;
 use pin_project_lite::pin_project;
 use tower::{Layer, Service};
 
-const HTTP_SERVER_REQUEST_COUNT_METRIC: &str = "http.server.request.count";
+const HTTP_SERVER_DURATION_METRIC: &str = "http.server.duration";
 
 const HTTP_REQUEST_METHOD_LABEL: &str = "http.request.method";
 const HTTP_ROUTE_LABEL: &str = "http.route";
@@ -30,27 +30,21 @@ const HTTP_RESPONSE_STATUS_CODE: &str = "http.response.status_code";
 /// The OTEL SDKs do support calling for the global meter provider instead of holding a reference
 /// but it seems ideal to avoid extra access to the global meter, which sits behind a RWLock.
 pub struct HTTPMetricsLayerState {
-    /// `http.server.request.count` is not in the experimental OTEL HTTP semantic conventions at this point;
-    /// there is `http.server.active_requests`, which is an UpDownCounter (analogous to a Prometheus Gauge).
-    /// It is not clear to me whether http.server.active_requests is supposed to be a replacement for a
-    /// standard Prometheus Counter for total requests, or a complement to a total request count metric.
-    /// For now I am keeping this Counter as it matches better with standard Prometheus usage, and
-    /// OTEL semantic conventions for HTTP metrics do not seem to be making much movement at this point.
-    pub server_request_count: Counter<u64>,
+    pub server_request_duration: Histogram<u64>,
 }
 
 impl HTTPMetricsLayerState {
     // TODO convert this to a bunch of "with_whatever()" methods
-    pub fn new(service_name: String, server_request_count_name: Option<String>) -> Self {
+    pub fn new(service_name: String, server_duration_metric_name: Option<String>) -> Self {
         let meter = global::meter(service_name);
 
-        let mut _server_request_count_name = Cow::from(HTTP_SERVER_REQUEST_COUNT_METRIC);
-        if let Some(name) = server_request_count_name {
-            _server_request_count_name = name.into();
+        let mut _server_duration_metric_name = Cow::from(HTTP_SERVER_DURATION_METRIC);
+        if let Some(name) = server_duration_metric_name {
+            _server_duration_metric_name = name.into();
         }
 
         HTTPMetricsLayerState {
-            server_request_count: meter.u64_counter(_server_request_count_name).init(),
+            server_request_duration: meter.u64_histogram(_server_duration_metric_name).init(),
         }
     }
 }
@@ -153,7 +147,10 @@ where
 
         let labels = extract_labels(this.metrics_state, &response);
 
-        this.layer_state.server_request_count.add(1, &labels);
+        this.layer_state.server_request_duration.record(
+            this.metrics_state.duration_start.elapsed().as_secs(),
+            &labels,
+        );
 
         Ready(Ok(response))
     }
