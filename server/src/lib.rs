@@ -7,10 +7,9 @@ use std::task::Poll::Ready;
 use std::task::{Context, Poll};
 use std::time::Instant;
 
-use axum::http::Response;
+use axum::http::{HeaderMap, Response, Version};
 use axum::{extract::MatchedPath, http::Request};
 use futures_util::ready;
-use http::{HeaderMap, Version};
 use http_body::Body as HTTPBody;
 use opentelemetry::metrics::Histogram;
 use opentelemetry::KeyValue;
