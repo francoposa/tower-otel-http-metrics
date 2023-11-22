@@ -10,9 +10,9 @@ use std::time::Instant;
 use axum::http::Response;
 use axum::{extract::MatchedPath, http::Request};
 use futures_util::ready;
-use http::HeaderMap;
+use http::{HeaderMap, Version};
 use http_body::Body as HTTPBody;
-use opentelemetry::metrics::{Counter, Histogram};
+use opentelemetry::metrics::Histogram;
 use opentelemetry::KeyValue;
 use opentelemetry_api::global;
 use pin_project_lite::pin_project;
@@ -22,7 +22,10 @@ const HTTP_SERVER_DURATION_METRIC: &str = "http.server.duration";
 
 const HTTP_REQUEST_METHOD_LABEL: &str = "http.request.method";
 const HTTP_ROUTE_LABEL: &str = "http.route";
-const HTTP_RESPONSE_STATUS_CODE: &str = "http.response.status_code";
+const HTTP_RESPONSE_STATUS_CODE_LABEL: &str = "http.response.status_code";
+
+const NETWORK_PROTOCOL_NAME_LABEL: &str = "network.protocol.name";
+const NETWORK_PROTOCOL_VERSION_LABEL: &str = "network.protocol.version";
 
 /// HTTPMetricsLayerState holds state global to the entire Service layer.
 ///
@@ -71,20 +74,23 @@ impl<S> Layer<S> for HTTPMetricsLayer {
     }
 }
 
-/// ResponseFutureMetricsState holds single-request-scoped data for metrics and their attributes.
+/// ResponseFutureMetricsState holds request-scoped data for metrics and their attributes.
 ///
-/// ResponseFutureMetricsState lives inside the response future, as it needs to hold both data
-/// extracted before the request is forwarded to the inner Service, as well as data extracted
-/// from the response after it is returned upwards from the inner Service.
+/// ResponseFutureMetricsState lives inside the response future, as it needs to hold data
+/// initialized or extracted from the request before it is forwarded to the inner Service.
+/// The rest of the data (e.g. status code, error) can be extracted from the response
+/// or calculated with respect to the data held here (e.g., duration = now - duration start).
 #[derive(Clone)]
 struct ResponseFutureMetricsState {
     // fields for the metrics themselves
-    // TODO https://opentelemetry.io/docs/specs/otel/metrics/semantic_conventions/http-metrics/#metric-httpserverduration
-    duration_start: Instant,
+    // http server duration: https://opentelemetry.io/docs/specs/semconv/http/http-metrics/#metric-httpserverrequestduration
+    http_request_duration_start: Instant,
 
     // fields for metric labels
-    matched_path: String,
-    method: String,
+    http_request_method: String,
+    http_route: String,
+    network_protocol_name: String,
+    network_protocol_version: String,
 }
 
 pin_project! {
@@ -123,13 +129,18 @@ where
         // TODO get all the good stuff out of the headers
         let headers = parse_request_headers(req.headers());
 
+        let (protocol, version) = split_and_format_protocol_version(req.version());
+        req.uri();
+
         ResponseFuture {
             inner_response_future: self.inner_service.call(req),
             layer_state: self.state.clone(),
             metrics_state: ResponseFutureMetricsState {
-                duration_start,
-                matched_path,
-                method,
+                http_request_duration_start: duration_start,
+                http_request_method: method,
+                http_route: matched_path,
+                network_protocol_name: protocol,
+                network_protocol_version: version,
             },
         }
     }
@@ -145,10 +156,13 @@ where
         let this = self.project();
         let response = ready!(this.inner_response_future.poll(cx))?;
 
-        let labels = extract_labels(this.metrics_state, &response);
+        let labels = extract_labels_server_request_duration(this.metrics_state, &response);
 
         this.layer_state.server_request_duration.record(
-            this.metrics_state.duration_start.elapsed().as_secs(),
+            this.metrics_state
+                .http_request_duration_start
+                .elapsed()
+                .as_secs(),
             &labels,
         );
 
@@ -163,13 +177,38 @@ fn parse_request_headers(headers: &HeaderMap) -> HashMap<String, String> {
         .collect()
 }
 
-fn extract_labels<T>(
+fn extract_labels_server_request_duration<T>(
     metrics_state: &ResponseFutureMetricsState,
     resp: &Response<T>,
 ) -> Vec<KeyValue> {
     vec![
-        KeyValue::new(HTTP_REQUEST_METHOD_LABEL, metrics_state.method.clone()),
-        KeyValue::new(HTTP_ROUTE_LABEL, metrics_state.matched_path.clone()),
-        KeyValue::new(HTTP_RESPONSE_STATUS_CODE, resp.status().to_string()),
+        KeyValue::new(HTTP_ROUTE_LABEL, metrics_state.http_route.clone()),
+        KeyValue::new(HTTP_RESPONSE_STATUS_CODE_LABEL, resp.status().to_string()),
+        KeyValue::new(
+            HTTP_REQUEST_METHOD_LABEL,
+            metrics_state.http_request_method.clone(),
+        ),
+        KeyValue::new(
+            NETWORK_PROTOCOL_NAME_LABEL,
+            metrics_state.network_protocol_name.clone(),
+        ),
+        KeyValue::new(
+            NETWORK_PROTOCOL_VERSION_LABEL,
+            metrics_state.network_protocol_version.clone(),
+        ),
     ]
+}
+
+fn split_and_format_protocol_version(http_version: Version) -> (String, String) {
+    let string_http_version = format!("{:?}", http_version);
+    let mut split = string_http_version.split("/");
+    let mut scheme = String::new();
+    if let Some(next) = split.next() {
+        scheme = next.to_owned().to_lowercase();
+    };
+    let mut version = String::new();
+    if let Some(next) = split.next() {
+        version = next.to_owned();
+    };
+    return (scheme, version);
 }

@@ -43,16 +43,10 @@ async fn main() {
             .with_filter(LevelFilter::INFO);
 
     //
-    // opentelemetry-formatted tracing layer to send traces to collector
+    // init opentelemetry layers for logs + traces and metrics
     //
 
-    // see more about opentelemetry propagators here:
-    // https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/context/api-propagators.md
-    global::set_text_map_propagator(opentelemetry::sdk::propagation::TraceContextPropagator::new());
-
-    // use this stdout pipeline instead to debug or view the opentelemetry data without a collector
-    // let otel_tracer = opentelemetry_stdout::new_pipeline().install_simple();
-
+    // init otel resource config
     let otlp_resource_detected = Resource::from_detectors(
         Duration::from_secs(3),
         vec![
@@ -65,6 +59,10 @@ async fn main() {
         opentelemetry_semantic_conventions::resource::SERVICE_NAME.string(SERVICE_NAME),
     ]);
     let otlp_resource = otlp_resource_detected.merge(&otlp_resource_override);
+
+    // init otel tracing propogator; see more about opentelemetry propagators here:
+    // https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/context/api-propagators.md
+    global::set_text_map_propagator(opentelemetry::sdk::propagation::TraceContextPropagator::new());
 
     // init otel tracing pipeline
     // https://docs.rs/opentelemetry-otlp/latest/opentelemetry_otlp/#kitchen-sink-full-configuration
@@ -79,6 +77,10 @@ async fn main() {
         .with_trace_config(
             opentelemetry::sdk::trace::config().with_resource(otlp_resource.clone()),
         );
+
+    // init otel tracer
+    // use this stdout pipeline instead to debug or view the opentelemetry data without a collector
+    // let otel_tracer = opentelemetry_stdout::new_pipeline().install_simple();
     let otel_tracer = otel_trace_pipeline
         .install_batch(opentelemetry::runtime::Tokio)
         .unwrap();
@@ -109,6 +111,7 @@ async fn main() {
         .with(otel_metrics_subscriber_layer);
     tracing::subscriber::set_global_default(telemetry_subscriber).unwrap();
 
+    // init our otel metrics middleware
     let otel_metrics_service_layer = lib::HTTPMetricsLayer {
         state: Arc::from(
             echo_server_logging_metrics_tracing::HTTPMetricsLayerState::new(
