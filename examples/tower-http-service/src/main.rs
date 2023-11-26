@@ -12,10 +12,9 @@ use opentelemetry_otlp::{self, WithExportConfig};
 use tower::make::Shared;
 use tower::ServiceBuilder;
 
-const SERVICE_NAME: &str = "example-tower-http-servicer";
+use tower_otel_http_metrics;
 
-#[path = "../../../src/lib.rs"]
-mod lib;
+const SERVICE_NAME: &str = "example-tower-http-service";
 
 async fn handle(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
     Ok(Response::new(Body::from("hello, world")))
@@ -54,8 +53,8 @@ async fn main() {
         .unwrap();
 
     // init our otel metrics middleware
-    let otel_metrics_service_layer = lib::HTTPMetricsLayer {
-        state: Arc::from(lib::HTTPMetricsLayerState::new(
+    let otel_metrics_service_layer = tower_otel_http_metrics::HTTPMetricsLayer {
+        state: Arc::from(tower_otel_http_metrics::HTTPMetricsLayerState::new(
             String::from(SERVICE_NAME),
             None,
         )),
