@@ -7,15 +7,16 @@ use std::task::Poll::Ready;
 use std::task::{Context, Poll};
 use std::time::Instant;
 
-use axum::http::{HeaderMap, Response, Version};
-use axum::{extract::MatchedPath, http::Request};
 use futures_util::ready;
-use http_body::Body as HTTPBody;
 use opentelemetry::metrics::Histogram;
 use opentelemetry::KeyValue;
 use opentelemetry_api::global;
-use pin_project_lite::pin_project;
 use tower::{Layer, Service};
+
+use axum::http::{HeaderMap, Response, Version};
+use axum::{extract::MatchedPath, http::Request};
+use http_body::Body as HTTPBody;
+use pin_project_lite::pin_project;
 
 const HTTP_SERVER_DURATION_METRIC: &str = "http.server.duration";
 
@@ -126,7 +127,7 @@ where
         };
 
         // TODO get all the good stuff out of the headers
-        let headers = parse_request_headers(req.headers());
+        let _headers = parse_request_headers(req.headers());
 
         let (protocol, version) = split_and_format_protocol_version(req.version());
         req.uri();

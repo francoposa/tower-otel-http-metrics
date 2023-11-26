@@ -2,8 +2,8 @@
 extensions:
   basicauth/otlp:
     client_auth:
-      username: ${GRAFANA_CLOUD_USER_ID}
-      password: ${GRAFANA_CLOUD_API_KEY}
+      username: team-a
+      password: team-a
 
 receivers:
   otlp:
@@ -57,9 +57,9 @@ service:
     metrics:
       receivers: [ otlp ]
       exporters: [ logging, otlphttp/mimir-local ]
-    traces:
-      receivers: [ otlp ]
-      exporters: [ logging ]
-    logs:
-      receivers: [ otlp ]
-      exporters: [ logging ]
+#    traces:
+#      receivers: [ otlp ]
+#      exporters: [ logging ]
+#    logs:
+#      receivers: [ otlp ]
+#      exporters: [ logging ]
