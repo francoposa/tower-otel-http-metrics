@@ -1,0 +1,21 @@
+[package]
+name = "tower-otel-http-metrics"
+edition = "2021"
+version = "0.1.0-alpha.0"
+license = "MIT"
+description = "axum OpenTelemetry metrics middleware with prometheus exporter"
+homepage = "https://github.com/francoposa/tower-otel-http-metrics"
+repository = "https://github.com/francoposa/tower-otel-http-metrics"
+documentation = "https://docs.rs/tower-otel-http-metric"
+readme = "README.md"
+
+[dependencies]
+axum = { features = ["matched-path"], version = "0.6.*", default-features = false }
+futures-core = { version = "0.3.*", default-features = false }
+futures-util = { default-features = false, version = "0.3.*" }
+http-body = { version = "0.4.*", default-features = false }
+opentelemetry = { version = "0.20.*", default-features = false }
+opentelemetry_api = { version = "0.20.*", default-features = false }
+opentelemetry-otlp = { version = "0.13.*", default-features = false }
+pin-project-lite = { version = "0.2.*", default-features = false }
+tower = { version = "*", default-features = false }
