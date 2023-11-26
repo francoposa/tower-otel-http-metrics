@@ -8,6 +8,7 @@ homepage = "https://github.com/francoposa/tower-otel-http-metrics"
 repository = "https://github.com/francoposa/tower-otel-http-metrics"
 documentation = "https://docs.rs/tower-otel-http-metric"
 readme = "README.md"
+include = ["src/"]
 
 [dependencies]
 axum = { features = ["matched-path"], version = "0.6.*", default-features = false }
