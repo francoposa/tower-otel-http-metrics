@@ -1,0 +1,23 @@
+[package]
+name = "example-tower-http-service"
+version = "0.1.0-alpha.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+axum = { features = ["matched-path"], version = "0.6.*", default-features = false }
+hyper = { version = "*", default-features = false }
+bytes = { version = "1.*", default-features = false }
+futures-core = { version = "0.3.*", default-features = false }
+futures-util = { default-features = false, version = "0.3.*" }
+http-body = { version = "0.4.*", default-features = false }
+opentelemetry = { version = "0.20.*", features = ["rt-tokio"], default-features = false }
+opentelemetry_api = { version = "0.20.*", default-features = false }
+opentelemetry-otlp = { version = "0.13.*", features = ["metrics"], default-features = false }
+pin-project-lite = { version = "0.2.*", default-features = false }
+serde = { version = "1.*", default-features = false }
+serde_json = { version = "1.*", default-features = false }
+tokio = { version = "*", features = ["rt-multi-thread"], default-features = false }
+tower = { version = "*", features = ["make"], default-features = false }
+
