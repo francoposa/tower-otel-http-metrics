@@ -1,3 +1,87 @@
+#![doc = include_str!("../README.md")]
+//! ## Examples
+//! See `examples` directory in repo.
+//!
+//! ### Hyper Server
+//! Adding OpenTelementry HTTP Server metrics to a bare-bones Tower-compatible Service using [`Hyper`](https://docs.rs/crate/hyper/latest):
+//!
+//! ```rust
+//! use std::convert::Infallible;
+//! use std::net::SocketAddr;
+//! use std::time::Duration;
+//!
+//! use hyper::{Body, Request, Response, Server};
+//! use opentelemetry::sdk::resource::{
+//!     EnvResourceDetector, SdkProvidedResourceDetector, TelemetryResourceDetector,
+//! };
+//! use opentelemetry::sdk::Resource;
+//! use opentelemetry_otlp::{self, WithExportConfig};
+//! use tower::make::Shared;
+//! use tower::ServiceBuilder;
+//!
+//! use tower_otel_http_metrics;
+//!
+//! const SERVICE_NAME: &str = "example-tower-http-service";
+//!
+//! async fn handle(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
+//!     Ok(Response::new(Body::from("hello, world")))
+//! }
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     // init otel resource config
+//!     let otlp_resource_detected = Resource::from_detectors(
+//!         Duration::from_secs(3),
+//!         vec![
+//!             Box::new(SdkProvidedResourceDetector),
+//!             Box::new(EnvResourceDetector::new()),
+//!             Box::new(TelemetryResourceDetector),
+//!         ],
+//!     );
+//!     let otlp_resource_override = Resource::new(vec![
+//!         opentelemetry_semantic_conventions::resource::SERVICE_NAME.string(SERVICE_NAME),
+//!     ]);
+//!     let otlp_resource = otlp_resource_detected.merge(&otlp_resource_override);
+//!
+//!     // init otel metrics pipeline
+//!     // https://docs.rs/opentelemetry-otlp/latest/opentelemetry_otlp/#kitchen-sink-full-configuration
+//!     // this configuration interface is annoyingly slightly different from the tracing one
+//!     // also the above documentation is outdated, it took awhile to get this correct one working
+//!     opentelemetry_otlp::new_pipeline()
+//!         .metrics(opentelemetry::runtime::Tokio)
+//!         .with_exporter(
+//!             opentelemetry_otlp::new_exporter()
+//!                 .tonic()
+//!                 .with_endpoint("http://localhost:4317"),
+//!         )
+//!         .with_resource(otlp_resource.clone())
+//!         .with_period(Duration::from_secs(15))
+//!         .build() // build registers the global meter provider
+//!         .unwrap();
+//!
+//!     // init our otel metrics middleware
+//!     let otel_metrics_service_layer =
+//!         tower_otel_http_metrics::HTTPMetricsLayer::new(String::from(SERVICE_NAME), None);
+//
+//!     let service = ServiceBuilder::new()
+//!         .layer(otel_metrics_service_layer)
+//!         .service_fn(handle);
+//!
+//!     let make_service = Shared::new(service);
+//!
+//!     let addr = SocketAddr::from(([127, 0, 0, 1], 5000));
+//!     let server = Server::bind(&addr).serve(make_service);
+//!
+//!     if let Err(e) = server.await {
+//!         eprintln!("server error: {}", e);
+//!     }
+//! }
+//! ```
+//!
+//! [`Layer`]: tower_layer::Layer
+//! [`Service`]: tower_service::Service
+//! [`Future`]: tower_service::Future
+
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::future::Future;
@@ -7,16 +91,15 @@ use std::task::Poll::Ready;
 use std::task::{Context, Poll};
 use std::time::Instant;
 
+use axum::http::{HeaderMap, Response, Version};
+use axum::{extract::MatchedPath, http::Request};
 use futures_util::ready;
+use http_body::Body as HTTPBody;
 use opentelemetry::metrics::Histogram;
 use opentelemetry::KeyValue;
 use opentelemetry_api::global;
-use tower::{Layer, Service};
-
-use axum::http::{HeaderMap, Response, Version};
-use axum::{extract::MatchedPath, http::Request};
-use http_body::Body as HTTPBody;
 use pin_project_lite::pin_project;
+use tower::{Layer, Service};
 
 const HTTP_SERVER_DURATION_METRIC: &str = "http.server.duration";
 
@@ -27,16 +110,29 @@ const HTTP_RESPONSE_STATUS_CODE_LABEL: &str = "http.response.status_code";
 const NETWORK_PROTOCOL_NAME_LABEL: &str = "network.protocol.name";
 const NETWORK_PROTOCOL_VERSION_LABEL: &str = "network.protocol.version";
 
-/// HTTPMetricsLayerState holds state global to the entire Service layer.
+/// State scoped to the entire middleware Layer.
 ///
 /// For now the only global state we hold onto is the metrics instruments.
 /// The OTEL SDKs do support calling for the global meter provider instead of holding a reference
 /// but it seems ideal to avoid extra access to the global meter, which sits behind a RWLock.
-pub struct HTTPMetricsLayerState {
+struct HTTPMetricsLayerState {
     pub server_request_duration: Histogram<u64>,
 }
 
-impl HTTPMetricsLayerState {
+#[derive(Clone)]
+/// [`Service`] used by [`HTTPMetricsLayer`]
+pub struct HTTPMetricsService<S> {
+    pub(crate) state: Arc<HTTPMetricsLayerState>,
+    inner_service: S,
+}
+
+#[derive(Clone)]
+/// [`Layer`] which applies the OTEL HTTP server metrics middleware
+pub struct HTTPMetricsLayer {
+    state: Arc<HTTPMetricsLayerState>,
+}
+
+impl HTTPMetricsLayer {
     // TODO convert this to a bunch of "with_whatever()" methods
     pub fn new(service_name: String, server_duration_metric_name: Option<String>) -> Self {
         let meter = global::meter(service_name);
@@ -45,29 +141,19 @@ impl HTTPMetricsLayerState {
         if let Some(name) = server_duration_metric_name {
             _server_duration_metric_name = name.into();
         }
-
-        HTTPMetricsLayerState {
-            server_request_duration: meter.u64_histogram(_server_duration_metric_name).init(),
+        HTTPMetricsLayer {
+            state: Arc::from(HTTPMetricsLayerState {
+                server_request_duration: meter.u64_histogram(_server_duration_metric_name).init(),
+            }),
         }
     }
 }
 
-#[derive(Clone)]
-pub struct HttpMetricsService<S> {
-    pub(crate) state: Arc<HTTPMetricsLayerState>,
-    inner_service: S,
-}
-
-#[derive(Clone)]
-pub struct HTTPMetricsLayer {
-    pub state: Arc<HTTPMetricsLayerState>,
-}
-
 impl<S> Layer<S> for HTTPMetricsLayer {
-    type Service = HttpMetricsService<S>;
+    type Service = HTTPMetricsService<S>;
 
     fn layer(&self, service: S) -> Self::Service {
-        HttpMetricsService {
+        HTTPMetricsService {
             state: self.state.clone(),
             inner_service: service,
         }
@@ -94,8 +180,8 @@ struct ResponseFutureMetricsState {
 }
 
 pin_project! {
-    #[project = ResponseFutureProj]
-    pub struct ResponseFuture<F> {
+    /// Response [`Future`] for [`HTTPMetricsService`].
+    pub struct HTTPMetricsResponseFuture<F> {
         #[pin]
         inner_response_future: F,
         layer_state: Arc<HTTPMetricsLayerState>,
@@ -103,14 +189,14 @@ pin_project! {
     }
 }
 
-impl<S, R, B> Service<Request<R>> for HttpMetricsService<S>
+impl<S, R, B> Service<Request<R>> for HTTPMetricsService<S>
 where
     S: Service<Request<R>, Response = Response<B>>,
     B: HTTPBody,
 {
     type Response = S::Response;
     type Error = S::Error;
-    type Future = ResponseFuture<S::Future>;
+    type Future = HTTPMetricsResponseFuture<S::Future>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner_service.poll_ready(cx)
@@ -132,7 +218,7 @@ where
         let (protocol, version) = split_and_format_protocol_version(req.version());
         req.uri();
 
-        ResponseFuture {
+        HTTPMetricsResponseFuture {
             inner_response_future: self.inner_service.call(req),
             layer_state: self.state.clone(),
             metrics_state: ResponseFutureMetricsState {
@@ -146,7 +232,7 @@ where
     }
 }
 
-impl<F, B: HTTPBody, E> Future for ResponseFuture<F>
+impl<F, B: HTTPBody, E> Future for HTTPMetricsResponseFuture<F>
 where
     F: Future<Output = Result<Response<B>, E>>,
 {

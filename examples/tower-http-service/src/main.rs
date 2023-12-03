@@ -1,6 +1,5 @@
 use std::convert::Infallible;
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::time::Duration;
 
 use hyper::{Body, Request, Response, Server};
@@ -53,12 +52,8 @@ async fn main() {
         .unwrap();
 
     // init our otel metrics middleware
-    let otel_metrics_service_layer = tower_otel_http_metrics::HTTPMetricsLayer {
-        state: Arc::from(tower_otel_http_metrics::HTTPMetricsLayerState::new(
-            String::from(SERVICE_NAME),
-            None,
-        )),
-    };
+    let otel_metrics_service_layer =
+        tower_otel_http_metrics::HTTPMetricsLayer::new(String::from(SERVICE_NAME), None);
 
     let service = ServiceBuilder::new()
         .layer(otel_metrics_service_layer)
