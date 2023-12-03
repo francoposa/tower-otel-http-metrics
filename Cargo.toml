@@ -1,7 +1,7 @@
 [package]
 name = "tower-otel-http-metrics"
 edition = "2021"
-version = "0.1.0-alpha.1"
+version = "0.1.0-alpha.2"
 license = "MIT"
 description = "axum OpenTelemetry metrics middleware with prometheus exporter"
 homepage = "https://github.com/francoposa/tower-otel-http-metrics"
