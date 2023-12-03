@@ -1,6 +1,6 @@
 #![doc = include_str!("../README.md")]
 //! ## Examples
-//! See `examples` directory in repo.
+//! See `examples` directory in repo for runnable code and supporting config files.
 //!
 //! ### Hyper Server
 //! Adding OpenTelementry HTTP Server metrics to a bare-bones Tower-compatible Service using [`Hyper`](https://docs.rs/crate/hyper/latest):
