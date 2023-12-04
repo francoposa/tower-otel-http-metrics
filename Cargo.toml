@@ -10,10 +10,15 @@ documentation = "https://docs.rs/tower-otel-http-metrics"
 readme = "README.md"
 include = ["src/"]
 
+[features]
+default = []
+axum = ["dep:axum"]
+
 [dependencies]
-axum = { features = ["matched-path"], version = "0.6", default-features = false }
+axum = { features = ["matched-path"], version = "0.6", default-features = false, optional = true }
 futures-core = { version = "0.3", default-features = false }
-futures-util = { default-features = false, version = "0.3" }
+futures-util = { version = "0.3", default-features = false }
+http = { version = "0.2", default-features = false }
 http-body = { version = "0.4", default-features = false }
 opentelemetry = { version = "0.20", default-features = false }
 opentelemetry_api = { version = "0.20", default-features = false }

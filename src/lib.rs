@@ -1,99 +1,22 @@
 #![doc = include_str!("../README.md")]
-//! ## Examples
-//! See `examples` directory in repo for runnable code and supporting config files.
-//!
-//! ### Hyper Server
-//! Adding OpenTelementry HTTP Server metrics to a bare-bones Tower-compatible Service using [`Hyper`](https://docs.rs/crate/hyper/latest):
-//!
-//! ```rust
-//! use std::convert::Infallible;
-//! use std::net::SocketAddr;
-//! use std::time::Duration;
-//!
-//! use hyper::{Body, Request, Response, Server};
-//! use opentelemetry::sdk::resource::{
-//!     EnvResourceDetector, SdkProvidedResourceDetector, TelemetryResourceDetector,
-//! };
-//! use opentelemetry::sdk::Resource;
-//! use opentelemetry_otlp::{self, WithExportConfig};
-//! use tower::make::Shared;
-//! use tower::ServiceBuilder;
-//!
-//! use tower_otel_http_metrics;
-//!
-//! const SERVICE_NAME: &str = "example-tower-http-service";
-//!
-//! async fn handle(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
-//!     Ok(Response::new(Body::from("hello, world")))
-//! }
-//!
-//! #[tokio::main]
-//! async fn main() {
-//!     // init otel resource config
-//!     let otlp_resource_detected = Resource::from_detectors(
-//!         Duration::from_secs(3),
-//!         vec![
-//!             Box::new(SdkProvidedResourceDetector),
-//!             Box::new(EnvResourceDetector::new()),
-//!             Box::new(TelemetryResourceDetector),
-//!         ],
-//!     );
-//!     let otlp_resource_override = Resource::new(vec![
-//!         opentelemetry_semantic_conventions::resource::SERVICE_NAME.string(SERVICE_NAME),
-//!     ]);
-//!     let otlp_resource = otlp_resource_detected.merge(&otlp_resource_override);
-//!
-//!     // init otel metrics pipeline
-//!     // https://docs.rs/opentelemetry-otlp/latest/opentelemetry_otlp/#kitchen-sink-full-configuration
-//!     // this configuration interface is annoyingly slightly different from the tracing one
-//!     // also the above documentation is outdated, it took awhile to get this correct one working
-//!     opentelemetry_otlp::new_pipeline()
-//!         .metrics(opentelemetry::runtime::Tokio)
-//!         .with_exporter(
-//!             opentelemetry_otlp::new_exporter()
-//!                 .tonic()
-//!                 .with_endpoint("http://localhost:4317"),
-//!         )
-//!         .with_resource(otlp_resource.clone())
-//!         .with_period(Duration::from_secs(15))
-//!         .build() // build registers the global meter provider
-//!         .unwrap();
-//!
-//!     // init our otel metrics middleware
-//!     let otel_metrics_service_layer =
-//!         tower_otel_http_metrics::HTTPMetricsLayer::new(String::from(SERVICE_NAME), None);
-//
-//!     let service = ServiceBuilder::new()
-//!         .layer(otel_metrics_service_layer)
-//!         .service_fn(handle);
-//!
-//!     let make_service = Shared::new(service);
-//!
-//!     let addr = SocketAddr::from(([127, 0, 0, 1], 5000));
-//!     let server = Server::bind(&addr).serve(make_service);
-//!
-//!     if let Err(e) = server.await {
-//!         eprintln!("server error: {}", e);
-//!     }
-//! }
-//! ```
 //!
 //! [`Layer`]: tower_layer::Layer
 //! [`Service`]: tower_service::Service
 //! [`Future`]: tower_service::Future
 
 use std::borrow::Cow;
-use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
+use std::string::String;
 use std::sync::Arc;
 use std::task::Poll::Ready;
 use std::task::{Context, Poll};
 use std::time::Instant;
 
-use axum::http::{HeaderMap, Response, Version};
-use axum::{extract::MatchedPath, http::Request};
+#[cfg(feature = "axum")]
+use axum::extract::MatchedPath;
 use futures_util::ready;
+use http::{Request, Response, Version};
 use http_body::Body as HTTPBody;
 use opentelemetry::metrics::Histogram;
 use opentelemetry::KeyValue;
@@ -207,13 +130,15 @@ where
 
         let method = req.method().as_str().to_owned();
 
+        #[allow(unused_mut)]
         let mut matched_path = String::new();
+        #[cfg(feature = "axum")]
         if let Some(mp) = req.extensions().get::<MatchedPath>() {
             matched_path = mp.as_str().to_owned();
         };
 
         // TODO get all the good stuff out of the headers
-        let _headers = parse_request_headers(req.headers());
+        // let _headers = parse_request_headers(req.headers());
 
         let (protocol, version) = split_and_format_protocol_version(req.version());
         req.uri();
@@ -256,12 +181,12 @@ where
     }
 }
 
-fn parse_request_headers(headers: &HeaderMap) -> HashMap<String, String> {
-    headers
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or_default().to_string()))
-        .collect()
-}
+// fn parse_request_headers(headers: &HeaderMap) -> HashMap<String, String> {
+//     headers
+//         .iter()
+//         .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or_default().to_string()))
+//         .collect()
+// }
 
 fn extract_labels_server_request_duration<T>(
     metrics_state: &ResponseFutureMetricsState,
@@ -286,15 +211,13 @@ fn extract_labels_server_request_duration<T>(
 }
 
 fn split_and_format_protocol_version(http_version: Version) -> (String, String) {
-    let string_http_version = format!("{:?}", http_version);
-    let mut split = string_http_version.split("/");
-    let mut scheme = String::new();
-    if let Some(next) = split.next() {
-        scheme = next.to_owned().to_lowercase();
+    let version_str = match http_version {
+        http::Version::HTTP_09 => "0.9",
+        http::Version::HTTP_10 => "1.0",
+        http::Version::HTTP_11 => "1.1",
+        http::Version::HTTP_2 => "2.0",
+        http::Version::HTTP_3 => "3.0",
+        _ => "",
     };
-    let mut version = String::new();
-    if let Some(next) = split.next() {
-        version = next.to_owned();
-    };
-    return (scheme, version);
+    (String::from("http"), String::from(version_str))
 }

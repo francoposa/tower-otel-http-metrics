@@ -1,19 +1,17 @@
 use std::convert::Infallible;
-use std::net::SocketAddr;
 use std::time::Duration;
 
+use axum::routing::{get, post, put, Router};
 use hyper::{Body, Request, Response, Server};
 use opentelemetry::sdk::resource::{
     EnvResourceDetector, SdkProvidedResourceDetector, TelemetryResourceDetector,
 };
 use opentelemetry::sdk::Resource;
 use opentelemetry_otlp::{self, WithExportConfig};
-use tower::make::Shared;
-use tower::ServiceBuilder;
 
 use tower_otel_http_metrics;
 
-const SERVICE_NAME: &str = "example-tower-http-service";
+const SERVICE_NAME: &str = "example-axum-http-service";
 
 async fn handle(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
     Ok(Response::new(Body::from("hello, world")))
@@ -55,14 +53,13 @@ async fn main() {
     let otel_metrics_service_layer =
         tower_otel_http_metrics::HTTPMetricsLayer::new(String::from(SERVICE_NAME), None);
 
-    let service = ServiceBuilder::new()
-        .layer(otel_metrics_service_layer)
-        .service_fn(handle);
+    let app = Router::new()
+        .route("/", get(handle))
+        .route("/", post(handle))
+        .route("/", put(handle))
+        .layer(otel_metrics_service_layer);
 
-    let make_service = Shared::new(service);
-
-    let addr = SocketAddr::from(([0, 0, 0, 0], 5000));
-    let server = Server::bind(&addr).serve(make_service);
+    let server = Server::bind(&"0.0.0.0:5000".parse().unwrap()).serve(app.into_make_service());
 
     if let Err(e) = server.await {
         eprintln!("server error: {}", e);
