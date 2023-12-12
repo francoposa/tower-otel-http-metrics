@@ -51,7 +51,7 @@ async fn main() {
 
     // init our otel metrics middleware
     let otel_metrics_service_layer =
-        tower_otel_http_metrics::HTTPMetricsLayer::new(String::from(SERVICE_NAME), None);
+        tower_otel_http_metrics::HTTPMetricsLayer::new(String::from(SERVICE_NAME));
 
     let app = Router::new()
         .route("/", get(handle))

@@ -24,7 +24,7 @@ use opentelemetry_api::global;
 use pin_project_lite::pin_project;
 use tower::{Layer, Service};
 
-const HTTP_SERVER_DURATION_METRIC: &str = "http.server.duration";
+const HTTP_SERVER_DURATION_METRIC: &str = "http.server.request.duration";
 
 const HTTP_REQUEST_METHOD_LABEL: &str = "http.request.method";
 const HTTP_ROUTE_LABEL: &str = "http.route";
@@ -56,17 +56,13 @@ pub struct HTTPMetricsLayer {
 }
 
 impl HTTPMetricsLayer {
-    // TODO convert this to a bunch of "with_whatever()" methods
-    pub fn new(service_name: String, server_duration_metric_name: Option<String>) -> Self {
+    pub fn new(service_name: String) -> Self {
         let meter = global::meter(service_name);
-
-        let mut _server_duration_metric_name = Cow::from(HTTP_SERVER_DURATION_METRIC);
-        if let Some(name) = server_duration_metric_name {
-            _server_duration_metric_name = name.into();
-        }
         HTTPMetricsLayer {
             state: Arc::from(HTTPMetricsLayerState {
-                server_request_duration: meter.u64_histogram(_server_duration_metric_name).init(),
+                server_request_duration: meter
+                    .u64_histogram(Cow::from(HTTP_SERVER_DURATION_METRIC))
+                    .init(),
             }),
         }
     }
