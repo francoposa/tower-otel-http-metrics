@@ -14,7 +14,6 @@ use opentelemetry_sdk::Resource;
 use tower::ServiceBuilder;
 
 use tower_otel_http_metrics;
-use tower_otel_http_metrics::MyLayer;
 
 const SERVICE_NAME: &str = "example-axum-http-service";
 
@@ -57,12 +56,17 @@ async fn main() {
     // init our otel metrics middleware
     let otel_metrics_service_layer =
         tower_otel_http_metrics::HTTPMetricsLayer::new(String::from(SERVICE_NAME));
+    // tower_otel_http_metrics::PropagateHeaderLayer::new(
+    //     HeaderName::from_static("x-request-id"),
+    // );
+
+    let service = ServiceBuilder::new().layer(otel_metrics_service_layer);
 
     let app = Router::new()
         .route("/", get(handle))
         .route("/", post(handle))
         .route("/", put(handle))
-        .layer(ServiceBuilder::new().layer(MyLayer));
+        .layer(service);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:5000").await.unwrap();
     let server = axum::serve(listener, app);

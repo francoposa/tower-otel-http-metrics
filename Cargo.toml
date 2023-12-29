@@ -18,7 +18,7 @@ axum = ["dep:axum"]
 axum = { features = ["matched-path"], version = "0.7", default-features = false, optional = true }
 futures-core = { version = "0.3", default-features = false }
 futures-util = { version = "0.3", default-features = false }
-http = { version = "0.2", default-features = false }
+http = { version = "1", default-features = false }
 http-body = { version = "0.4", default-features = false }
 opentelemetry = { version = "0.21", default-features = false }
 opentelemetry_api = { version = "0.20", features = ["metrics"], default-features = false }
@@ -26,4 +26,6 @@ opentelemetry-otlp = { version = "0.14", default-features = false }
 opentelemetry_sdk = { version = "0.21", features = ["metrics", "rt-tokio"], default-features = false }
 pin-project-lite = { version = "0.2", default-features = false }
 tower = { version = "0.4", default-features = false }
-#tower-service = { version = "0.3", default-features = false }
+tower-service = { version = "0.3", default-features = false }
+tower-layer = { version = "0.3", default-features = false }
+tower-http = { version = "0.5", features = ["full"] }

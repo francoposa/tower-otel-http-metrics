@@ -13,19 +13,17 @@ use std::task::Poll::Ready;
 use std::task::{Context, Poll};
 use std::time::Instant;
 
-use axum::extract::MatchedPath;
 #[cfg(feature = "axum")]
-use axum::extract::Request as AxumRequest;
-use axum::response::Response as AxumResponse;
-use futures_util::future::BoxFuture;
+use axum::extract::MatchedPath;
 use futures_util::ready;
-use http::{Request, Version};
+use http::{Response, Version};
 use http_body::Body as HTTPBody;
 use opentelemetry_api::global;
 use opentelemetry_api::metrics::Histogram;
 use opentelemetry_api::KeyValue;
 use pin_project_lite::pin_project;
-use tower::{Layer, Service};
+use tower_layer::Layer;
+use tower_service::Service;
 
 const HTTP_SERVER_DURATION_METRIC: &str = "http.server.request.duration";
 
@@ -82,39 +80,9 @@ impl<S> Layer<S> for HTTPMetricsLayer {
     }
 }
 
-/// ResponseFutureMetricsState holds request-scoped data for metrics and their attributes.
-///
-/// ResponseFutureMetricsState lives inside the response future, as it needs to hold data
-/// initialized or extracted from the request before it is forwarded to the inner Service.
-/// The rest of the data (e.g. status code, error) can be extracted from the response
-/// or calculated with respect to the data held here (e.g., duration = now - duration start).
-#[derive(Clone)]
-struct ResponseFutureMetricsState {
-    // fields for the metrics themselves
-    // http server duration: https://opentelemetry.io/docs/specs/semconv/http/http-metrics/#metric-httpserverrequestduration
-    http_request_duration_start: Instant,
-
-    // fields for metric labels
-    http_request_method: String,
-    http_route: String,
-    network_protocol_name: String,
-    network_protocol_version: String,
-}
-
-pin_project! {
-    /// Response [`Future`] for [`HTTPMetricsService`].
-    pub struct HTTPMetricsResponseFuture<F> {
-        #[pin]
-        inner_response_future: F,
-        layer_state: Arc<HTTPMetricsLayerState>,
-        metrics_state: ResponseFutureMetricsState,
-    }
-}
-
-impl<S, R> Service<Request<R>> for HTTPMetricsService<S>
+impl<ReqBody, ResBody, S> Service<http::Request<ReqBody>> for HTTPMetricsService<S>
 where
-    S: Service<Request<R>, Response = AxumResponse> + Send + 'static,
-    S::Future: Send + 'static,
+    S: Service<http::Request<ReqBody>, Response = http::Response<ResBody>>,
 {
     type Response = S::Response;
     type Error = S::Error;
@@ -124,7 +92,7 @@ where
         self.inner_service.poll_ready(cx)
     }
 
-    fn call(&mut self, req: Request<R>) -> Self::Future {
+    fn call(&mut self, req: http::Request<ReqBody>) -> Self::Future {
         let duration_start = Instant::now();
 
         let method = req.method().as_str().to_owned();
@@ -156,11 +124,40 @@ where
     }
 }
 
-impl<F, E> Future for HTTPMetricsResponseFuture<F>
+/// ResponseFutureMetricsState holds request-scoped data for metrics and their attributes.
+///
+/// ResponseFutureMetricsState lives inside the response future, as it needs to hold data
+/// initialized or extracted from the request before it is forwarded to the inner Service.
+/// The rest of the data (e.g. status code, error) can be extracted from the response
+/// or calculated with respect to the data held here (e.g., duration = now - duration start).
+#[derive(Clone)]
+struct ResponseFutureMetricsState {
+    // fields for the metrics themselves
+    // http server duration: https://opentelemetry.io/docs/specs/semconv/http/http-metrics/#metric-httpserverrequestduration
+    http_request_duration_start: Instant,
+
+    // fields for metric labels
+    http_request_method: String,
+    http_route: String,
+    network_protocol_name: String,
+    network_protocol_version: String,
+}
+
+pin_project! {
+    /// Response [`Future`] for [`HTTPMetricsService`].
+    pub struct HTTPMetricsResponseFuture<F> {
+        #[pin]
+        inner_response_future: F,
+        layer_state: Arc<HTTPMetricsLayerState>,
+        metrics_state: ResponseFutureMetricsState,
+    }
+}
+
+impl<F, ResBody, E> Future for HTTPMetricsResponseFuture<F>
 where
-    F: Future<Output = Result<AxumResponse, E>>,
+    F: Future<Output = Result<http::Response<ResBody>, E>>,
 {
-    type Output = Result<AxumResponse, E>;
+    type Output = F::Output;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
@@ -180,18 +177,11 @@ where
     }
 }
 
-// fn parse_request_headers(headers: &HeaderMap) -> HashMap<String, String> {
-//     headers
-//         .iter()
-//         .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or_default().to_string()))
-//         .collect()
-// }
-
-fn extract_labels_server_request_duration(
+fn extract_labels_server_request_duration<T>(
     metrics_state: &ResponseFutureMetricsState,
-    resp: &AxumResponse,
-) -> [KeyValue; 5] {
-    [
+    resp: &Response<T>,
+) -> Vec<KeyValue> {
+    vec![
         KeyValue::new(HTTP_ROUTE_LABEL, metrics_state.http_route.clone()),
         KeyValue::new(HTTP_RESPONSE_STATUS_CODE_LABEL, resp.status().to_string()),
         KeyValue::new(
@@ -219,43 +209,4 @@ fn split_and_format_protocol_version(http_version: Version) -> (String, String) 
         _ => "",
     };
     (String::from("http"), String::from(version_str))
-}
-
-#[derive(Clone)]
-pub struct MyLayer;
-
-impl<S> Layer<S> for MyLayer {
-    type Service = MyMiddleware<S>;
-
-    fn layer(&self, inner: S) -> Self::Service {
-        MyMiddleware { inner }
-    }
-}
-
-#[derive(Clone)]
-pub struct MyMiddleware<S> {
-    inner: S,
-}
-
-impl<S> Service<AxumRequest> for MyMiddleware<S>
-where
-    S: Service<AxumRequest, Response = AxumResponse> + Send + 'static,
-    S::Future: Send + 'static,
-{
-    type Response = S::Response;
-    type Error = S::Error;
-    // `BoxFuture` is a type alias for `Pin<Box<dyn Future + Send + 'a>>`
-    type Future = BoxFuture<'static, Result<Self::Response, Self::Error>>;
-
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready(cx)
-    }
-
-    fn call(&mut self, request: AxumRequest) -> Self::Future {
-        let future = self.inner.call(request);
-        Box::pin(async move {
-            let response: AxumResponse = future.await?;
-            Ok(response)
-        })
-    }
 }

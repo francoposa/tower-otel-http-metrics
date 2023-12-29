@@ -10,6 +10,7 @@ tower_otel_http_metrics = { path = "../../../tower-otel-http-metrics", package =
 axum = { features = ["http1", "http2", "json", "matched-path", "tokio"], version = "0.7", default-features = false }
 hyper = { version = "*", features = ["http1", "http2", "server"], default-features = false }
 bytes = { version = "1.*", default-features = false }
+http = { version = "1" }
 http-body = { version = "0.4.*", default-features = false }
 http-body-util = { version = "0.1" }
 opentelemetry = { version = "0.21.0", features = ["metrics"], default-features = false }
@@ -19,3 +20,4 @@ opentelemetry-semantic-conventions = { version = "0.13.0", default-features = fa
 opentelemetry-otlp = { version = "0.14.0", features = ["metrics", "tonic", "grpc-tonic", "trace"], default-features = false }
 tokio = { version = "*", features = ["rt-multi-thread", "rt", "macros"], default-features = false }
 tower = { version = "0.4", default-features = false }
+tower-http = { version = "0.5", features = ["full"] }
