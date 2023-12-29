@@ -11,7 +11,6 @@ use opentelemetry_sdk::resource::{
     EnvResourceDetector, SdkProvidedResourceDetector, TelemetryResourceDetector,
 };
 use opentelemetry_sdk::Resource;
-use tower::ServiceBuilder;
 
 use tower_otel_http_metrics;
 
@@ -56,24 +55,15 @@ async fn main() {
     // init our otel metrics middleware
     let otel_metrics_service_layer =
         tower_otel_http_metrics::HTTPMetricsLayer::new(String::from(SERVICE_NAME));
-    // tower_otel_http_metrics::PropagateHeaderLayer::new(
-    //     HeaderName::from_static("x-request-id"),
-    // );
-
-    let service = ServiceBuilder::new().layer(otel_metrics_service_layer);
 
     let app = Router::new()
         .route("/", get(handle))
         .route("/", post(handle))
         .route("/", put(handle))
-        .layer(service);
+        .layer(otel_metrics_service_layer);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:5000").await.unwrap();
     let server = axum::serve(listener, app);
-
-    // info!("starting {}...", SERVICE_NAME);
-
-    // let server = Server::bind(&"0.0.0.0:5000".parse().unwrap()).serve(app.into_make_service());
 
     if let Err(e) = server.await {
         eprintln!("server error: {}", e);

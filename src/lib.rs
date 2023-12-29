@@ -17,7 +17,6 @@ use std::time::Instant;
 use axum::extract::MatchedPath;
 use futures_util::ready;
 use http::{Response, Version};
-use http_body::Body as HTTPBody;
 use opentelemetry_api::global;
 use opentelemetry_api::metrics::Histogram;
 use opentelemetry_api::KeyValue;
@@ -80,7 +79,36 @@ impl<S> Layer<S> for HTTPMetricsLayer {
     }
 }
 
-impl<ReqBody, ResBody, S> Service<http::Request<ReqBody>> for HTTPMetricsService<S>
+/// ResponseFutureMetricsState holds request-scoped data for metrics and their attributes.
+///
+/// ResponseFutureMetricsState lives inside the response future, as it needs to hold data
+/// initialized or extracted from the request before it is forwarded to the inner Service.
+/// The rest of the data (e.g. status code, error) can be extracted from the response
+/// or calculated with respect to the data held here (e.g., duration = now - duration start).
+#[derive(Clone)]
+struct ResponseFutureMetricsState {
+    // fields for the metrics themselves
+    // http server duration: https://opentelemetry.io/docs/specs/semconv/http/http-metrics/#metric-httpserverrequestduration
+    http_request_duration_start: Instant,
+
+    // fields for metric labels
+    http_request_method: String,
+    http_route: String,
+    network_protocol_name: String,
+    network_protocol_version: String,
+}
+
+pin_project! {
+    /// Response [`Future`] for [`HTTPMetricsService`].
+    pub struct HTTPMetricsResponseFuture<F> {
+        #[pin]
+        inner_response_future: F,
+        layer_state: Arc<HTTPMetricsLayerState>,
+        metrics_state: ResponseFutureMetricsState,
+    }
+}
+
+impl<S, ReqBody, ResBody> Service<http::Request<ReqBody>> for HTTPMetricsService<S>
 where
     S: Service<http::Request<ReqBody>, Response = http::Response<ResBody>>,
 {
@@ -124,35 +152,6 @@ where
     }
 }
 
-/// ResponseFutureMetricsState holds request-scoped data for metrics and their attributes.
-///
-/// ResponseFutureMetricsState lives inside the response future, as it needs to hold data
-/// initialized or extracted from the request before it is forwarded to the inner Service.
-/// The rest of the data (e.g. status code, error) can be extracted from the response
-/// or calculated with respect to the data held here (e.g., duration = now - duration start).
-#[derive(Clone)]
-struct ResponseFutureMetricsState {
-    // fields for the metrics themselves
-    // http server duration: https://opentelemetry.io/docs/specs/semconv/http/http-metrics/#metric-httpserverrequestduration
-    http_request_duration_start: Instant,
-
-    // fields for metric labels
-    http_request_method: String,
-    http_route: String,
-    network_protocol_name: String,
-    network_protocol_version: String,
-}
-
-pin_project! {
-    /// Response [`Future`] for [`HTTPMetricsService`].
-    pub struct HTTPMetricsResponseFuture<F> {
-        #[pin]
-        inner_response_future: F,
-        layer_state: Arc<HTTPMetricsLayerState>,
-        metrics_state: ResponseFutureMetricsState,
-    }
-}
-
 impl<F, ResBody, E> Future for HTTPMetricsResponseFuture<F>
 where
     F: Future<Output = Result<http::Response<ResBody>, E>>,
@@ -176,6 +175,13 @@ where
         Ready(Ok(response))
     }
 }
+
+// fn parse_request_headers(headers: &HeaderMap) -> HashMap<String, String> {
+//     headers
+//         .iter()
+//         .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or_default().to_string()))
+//         .collect()
+// }
 
 fn extract_labels_server_request_duration<T>(
     metrics_state: &ResponseFutureMetricsState,
