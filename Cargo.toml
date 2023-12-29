@@ -19,7 +19,6 @@ axum = { features = ["matched-path"], version = "0.7", default-features = false,
 futures-core = { version = "0.3", default-features = false }
 futures-util = { version = "0.3", default-features = false }
 http = { version = "1", default-features = false }
-http-body = { version = "0.4", default-features = false }
 opentelemetry = { version = "0.21", default-features = false }
 opentelemetry_api = { version = "0.20", features = ["metrics"], default-features = false }
 pin-project-lite = { version = "0.2", default-features = false }
