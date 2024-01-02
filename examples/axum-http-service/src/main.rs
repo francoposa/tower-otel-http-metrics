@@ -1,20 +1,22 @@
-use std::convert::Infallible;
+use std::borrow::Cow;
 use std::time::Duration;
 
 use axum::routing::{get, post, put, Router};
-use hyper::{Body, Request, Response, Server};
-use opentelemetry::sdk::resource::{
+use bytes::Bytes;
+use opentelemetry_api::global;
+use opentelemetry_otlp::{
+    WithExportConfig, {self},
+};
+use opentelemetry_sdk::resource::{
     EnvResourceDetector, SdkProvidedResourceDetector, TelemetryResourceDetector,
 };
-use opentelemetry::sdk::Resource;
-use opentelemetry_otlp::{self, WithExportConfig};
-
+use opentelemetry_sdk::Resource;
 use tower_otel_http_metrics;
 
 const SERVICE_NAME: &str = "example-axum-http-service";
 
-async fn handle(_req: Request<Body>) -> Result<Response<Body>, Infallible> {
-    Ok(Response::new(Body::from("hello, world")))
+async fn handle() -> Bytes {
+    Bytes::from("hello, world")
 }
 
 #[tokio::main]
@@ -38,7 +40,7 @@ async fn main() {
     // this configuration interface is annoyingly slightly different from the tracing one
     // also the above documentation is outdated, it took awhile to get this correct one working
     opentelemetry_otlp::new_pipeline()
-        .metrics(opentelemetry::runtime::Tokio)
+        .metrics(opentelemetry_sdk::runtime::Tokio)
         .with_exporter(
             opentelemetry_otlp::new_exporter()
                 .tonic()
@@ -50,8 +52,11 @@ async fn main() {
         .unwrap();
 
     // init our otel metrics middleware
-    let otel_metrics_service_layer =
-        tower_otel_http_metrics::HTTPMetricsLayer::new(String::from(SERVICE_NAME));
+    let global_meter = global::meter(Cow::from(SERVICE_NAME));
+    let otel_metrics_service_layer = tower_otel_http_metrics::HTTPMetricsLayerBuilder::new()
+        .with_meter(global_meter)
+        .build()
+        .unwrap();
 
     let app = Router::new()
         .route("/", get(handle))
@@ -59,9 +64,10 @@ async fn main() {
         .route("/", put(handle))
         .layer(otel_metrics_service_layer);
 
-    let server = Server::bind(&"0.0.0.0:5000".parse().unwrap()).serve(app.into_make_service());
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:5000").await.unwrap();
+    let server = axum::serve(listener, app);
 
-    if let Err(e) = server.await {
-        eprintln!("server error: {}", e);
+    if let Err(err) = server.await {
+        eprintln!("server error: {}", err);
     }
 }

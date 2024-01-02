@@ -12,17 +12,18 @@ use std::sync::Arc;
 use std::task::Poll::Ready;
 use std::task::{Context, Poll};
 use std::time::Instant;
+use std::{fmt, result};
 
 #[cfg(feature = "axum")]
 use axum::extract::MatchedPath;
 use futures_util::ready;
-use http::{Request, Response, Version};
-use http_body::Body as HTTPBody;
-use opentelemetry::metrics::Histogram;
-use opentelemetry::KeyValue;
+use http::{Response, Version};
 use opentelemetry_api::global;
+use opentelemetry_api::metrics::{Histogram, Meter};
+use opentelemetry_api::KeyValue;
 use pin_project_lite::pin_project;
-use tower::{Layer, Service};
+use tower_layer::Layer;
+use tower_service::Service;
 
 const HTTP_SERVER_DURATION_METRIC: &str = "http.server.request.duration";
 
@@ -55,15 +56,64 @@ pub struct HTTPMetricsLayer {
     state: Arc<HTTPMetricsLayerState>,
 }
 
-impl HTTPMetricsLayer {
-    pub fn new(service_name: String) -> Self {
-        let meter = global::meter(service_name);
-        HTTPMetricsLayer {
-            state: Arc::from(HTTPMetricsLayerState {
-                server_request_duration: meter
-                    .u64_histogram(Cow::from(HTTP_SERVER_DURATION_METRIC))
-                    .init(),
+pub struct HTTPMetricsLayerBuilder {
+    meter: Option<Meter>,
+}
+
+/// Error typedef to implement `std::error::Error` for `tower_otel_http_metrics`
+pub struct Error {
+    #[allow(dead_code)]
+    inner: ErrorKind,
+}
+
+/// `Result` typedef to use with the `tower_otel_http_metrics::Error` type
+pub type Result<T> = result::Result<T, Error>;
+
+enum ErrorKind {
+    #[allow(dead_code)]
+    /// Uncategorized
+    Other(String),
+
+    /// Invalid configuration
+    Config(String),
+}
+
+impl fmt::Debug for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_tuple("tower_otel_http_metrics::Error").finish()
+    }
+}
+
+impl HTTPMetricsLayerBuilder {
+    pub fn default() -> Self {
+        let meter = global::meter(Cow::from(""));
+        HTTPMetricsLayerBuilder { meter: Some(meter) }
+    }
+
+    pub fn new() -> Self {
+        HTTPMetricsLayerBuilder { meter: None }
+    }
+
+    pub fn build(self) -> Result<HTTPMetricsLayer> {
+        match self.meter {
+            Some(meter) => Ok(HTTPMetricsLayer {
+                state: Arc::from(HTTPMetricsLayerBuilder::make_state(meter)),
             }),
+            None => Err(Error {
+                inner: ErrorKind::Config(String::from("no meter provided")),
+            }),
+        }
+    }
+
+    pub fn with_meter(self, meter: Meter) -> Self {
+        HTTPMetricsLayerBuilder { meter: Some(meter) }
+    }
+
+    fn make_state(meter: Meter) -> HTTPMetricsLayerState {
+        HTTPMetricsLayerState {
+            server_request_duration: meter
+                .u64_histogram(Cow::from(HTTP_SERVER_DURATION_METRIC))
+                .init(),
         }
     }
 }
@@ -108,20 +158,19 @@ pin_project! {
     }
 }
 
-impl<S, R, B> Service<Request<R>> for HTTPMetricsService<S>
+impl<S, ReqBody, ResBody> Service<http::Request<ReqBody>> for HTTPMetricsService<S>
 where
-    S: Service<Request<R>, Response = Response<B>>,
-    B: HTTPBody,
+    S: Service<http::Request<ReqBody>, Response = http::Response<ResBody>>,
 {
     type Response = S::Response;
     type Error = S::Error;
     type Future = HTTPMetricsResponseFuture<S::Future>;
 
-    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<result::Result<(), Self::Error>> {
         self.inner_service.poll_ready(cx)
     }
 
-    fn call(&mut self, req: Request<R>) -> Self::Future {
+    fn call(&mut self, req: http::Request<ReqBody>) -> Self::Future {
         let duration_start = Instant::now();
 
         let method = req.method().as_str().to_owned();
@@ -153,11 +202,11 @@ where
     }
 }
 
-impl<F, B: HTTPBody, E> Future for HTTPMetricsResponseFuture<F>
+impl<F, ResBody, E> Future for HTTPMetricsResponseFuture<F>
 where
-    F: Future<Output = Result<Response<B>, E>>,
+    F: Future<Output = result::Result<http::Response<ResBody>, E>>,
 {
-    type Output = Result<Response<B>, E>;
+    type Output = F::Output;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
