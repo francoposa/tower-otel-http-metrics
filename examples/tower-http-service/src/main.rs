@@ -8,8 +8,9 @@ use hyper::body::Bytes;
 use hyper::server::conn::http1;
 use hyper::{Request, Response};
 use opentelemetry_api::global;
-use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_otlp::{self};
+use opentelemetry_otlp::{
+    WithExportConfig, {self},
+};
 use opentelemetry_sdk::resource::{
     EnvResourceDetector, SdkProvidedResourceDetector, TelemetryResourceDetector,
 };

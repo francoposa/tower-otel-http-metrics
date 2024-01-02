@@ -1,25 +1,22 @@
 use std::borrow::Cow;
-use std::convert::Infallible;
 use std::time::Duration;
 
 use axum::routing::{get, post, put, Router};
 use bytes::Bytes;
-use http_body_util::Full;
-use hyper::{Request, Response};
 use opentelemetry_api::global;
-use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_otlp::{self};
+use opentelemetry_otlp::{
+    WithExportConfig, {self},
+};
 use opentelemetry_sdk::resource::{
     EnvResourceDetector, SdkProvidedResourceDetector, TelemetryResourceDetector,
 };
 use opentelemetry_sdk::Resource;
-
 use tower_otel_http_metrics;
 
 const SERVICE_NAME: &str = "example-axum-http-service";
 
-async fn handle(_: Request<impl hyper::body::Body>) -> Result<Response<Full<Bytes>>, Infallible> {
-    Ok(Response::new(Full::new(Bytes::from("hello, world"))))
+async fn handle() -> Bytes {
+    Bytes::from("hello, world")
 }
 
 #[tokio::main]
@@ -70,7 +67,7 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind("0.0.0.0:5000").await.unwrap();
     let server = axum::serve(listener, app);
 
-    if let Err(e) = server.await {
-        eprintln!("server error: {}", e);
+    if let Err(err) = server.await {
+        eprintln!("server error: {}", err);
     }
 }
