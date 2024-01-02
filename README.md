@@ -71,8 +71,11 @@ async fn main() {
         .unwrap();
 
     // init our otel metrics middleware
-    let otel_metrics_service_layer =
-        tower_otel_http_metrics::HTTPMetricsLayer::new(String::from(SERVICE_NAME));
+    let global_meter = global::meter(Cow::from(SERVICE_NAME));
+    let otel_metrics_service_layer = tower_otel_http_metrics::HTTPMetricsLayerBuilder::new()
+        .with_meter(global_meter)
+        .build()
+        .unwrap();
 
     let app = Router::new()
         .route("/", get(handle))
@@ -152,8 +155,11 @@ async fn main() {
         .unwrap();
 
     // init our otel metrics middleware
-    let otel_metrics_service_layer =
-        tower_otel_http_metrics::HTTPMetricsLayer::new(String::from(SERVICE_NAME));
+    let global_meter = global::meter(Cow::from(SERVICE_NAME));
+    let otel_metrics_service_layer = tower_otel_http_metrics::HTTPMetricsLayerBuilder::new()
+        .with_meter(global_meter)
+        .build()
+        .unwrap();
 
     let tower_service = ServiceBuilder::new()
         .layer(otel_metrics_service_layer)
