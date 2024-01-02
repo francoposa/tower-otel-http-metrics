@@ -77,7 +77,7 @@ async fn main() {
                 .serve_connection(io, service_clone)
                 .await
             {
-                println!("Error serving connection: {:?}", err);
+                eprintln!("server error: {}", e);
             }
         });
     }
