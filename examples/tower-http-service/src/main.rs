@@ -5,18 +5,15 @@ use std::time::Duration;
 use http_body_util::Full;
 use hyper::body::Bytes;
 use hyper::server::conn::http1;
-use hyper::service::service_fn;
 use hyper::{Request, Response};
-use hyper_util::rt::TokioIo;
-use opentelemetry::sdk::resource::{
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_otlp::{self};
+use opentelemetry_sdk::resource::{
     EnvResourceDetector, SdkProvidedResourceDetector, TelemetryResourceDetector,
 };
-use opentelemetry::sdk::Resource;
-use opentelemetry_otlp::{self, WithExportConfig};
+use opentelemetry_sdk::Resource;
 use tokio::net::TcpListener;
-use tower::make::Shared;
 use tower::ServiceBuilder;
-
 use tower_otel_http_metrics;
 
 const SERVICE_NAME: &str = "example-tower-http-service";
@@ -46,7 +43,7 @@ async fn main() {
     // this configuration interface is annoyingly slightly different from the tracing one
     // also the above documentation is outdated, it took awhile to get this correct one working
     opentelemetry_otlp::new_pipeline()
-        .metrics(opentelemetry::runtime::Tokio)
+        .metrics(opentelemetry_sdk::runtime::Tokio)
         .with_exporter(
             opentelemetry_otlp::new_exporter()
                 .tonic()
@@ -61,29 +58,23 @@ async fn main() {
     let otel_metrics_service_layer =
         tower_otel_http_metrics::HTTPMetricsLayer::new(String::from(SERVICE_NAME));
 
-    let service = ServiceBuilder::new()
+    let tower_service = ServiceBuilder::new()
         .layer(otel_metrics_service_layer)
         .service_fn(handle);
-
-    // let make_service = Shared::new(service);
+    let hyper_service = hyper_util::service::TowerToHyperService::new(tower_service);
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 5000));
-    let listener = TcpListener::bind(addr).await?;
+    let listener = TcpListener::bind(addr).await.unwrap();
 
-    // We start a loop to continuously accept incoming connections
     loop {
-        let (stream, _) = listener.accept().await?;
+        let (stream, _) = listener.accept().await.unwrap();
 
-        // Use an adapter to access something implementing `tokio::io` traits as if they implement
-        // `hyper::rt` IO traits.
-        let io = TokioIo::new(stream);
+        let io = hyper_util::rt::TokioIo::new(stream);
+        let service_clone = hyper_service.clone();
 
-        // Spawn a tokio task to serve multiple connections concurrently
         tokio::task::spawn(async move {
-            // Finally, we bind the incoming connection to our `hello` service
             if let Err(err) = http1::Builder::new()
-                // `service_fn` converts our function in a `Service`
-                .serve_connection(io, service)
+                .serve_connection(io, service_clone)
                 .await
             {
                 println!("Error serving connection: {:?}", err);

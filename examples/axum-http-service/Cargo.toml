@@ -7,13 +7,13 @@ edition = "2021"
 
 [dependencies]
 tower_otel_http_metrics = { path = "../../../tower-otel-http-metrics", package = "tower-otel-http-metrics", features = ["axum"], default-features = false }
-axum = { features = ["http1", "http2", "json", "matched-path", "tokio"], version = "0.7", default-features = false }
-hyper = { version = "*", features = ["http1", "http2", "server"], default-features = false }
-bytes = { version = "1.*", default-features = false }
+axum = { features = ["http1", "tokio"], version = "0.7", default-features = false }
+hyper = { version = "*", default-features = false }
+bytes = { version = "1", default-features = false }
 http-body-util = { version = "0.1" }
-opentelemetry = { version = "0.21.0", features = ["metrics"], default-features = false }
-opentelemetry_sdk = { version = "0.21.1", features = ["metrics", "rt-tokio"], default-features = false }
-opentelemetry_api = { version = "0.20.*", default-features = false }
-opentelemetry-semantic-conventions = { version = "0.13.0", default-features = false }
-opentelemetry-otlp = { version = "0.14.0", features = ["metrics", "grpc-tonic"], default-features = false }
-tokio = { version = "*", features = ["rt-multi-thread", "macros"], default-features = false }
+opentelemetry = { version = "0.21", default-features = false }
+opentelemetry_sdk = { version = "0.21", features = ["rt-tokio"], default-features = false }
+opentelemetry_api = { version = "0.20", default-features = false }
+opentelemetry-semantic-conventions = { version = "0.13", default-features = false }
+opentelemetry-otlp = { version = "0.14", features = ["metrics", "grpc-tonic"], default-features = false }
+tokio = { version = "1", features = ["rt-multi-thread"], default-features = false }
