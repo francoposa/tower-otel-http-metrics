@@ -15,18 +15,22 @@ exporters:
   logging:
     loglevel: debug
   otlphttp/grafana-cloud:
+    # see https://grafana.com/docs/grafana-cloud/send-data/otlp/send-data-otlp/
+    # for how to get your endpoint, username, and password (cloud access policy token)
     endpoint: https://otlp-gateway-prod-us-central-0.grafana.net/otlp
     auth:
       authenticator: basicauth/otlp
   otlphttp/mimir-microservices-mode-local:
     endpoint: http://127.0.0.1:8000/otlp
-  otlphttp/mimir-monolithic-mode-local:
-    endpoint: http://127.0.0.1:8001/otlp
     # use for multi-tenant Mimir
     #    headers:
     #      "X-Scope-OrgId": "team-a"
     #    auth:
     #      authenticator: basicauth/otlp
+  otlphttp/mimir-monolithic-mode-local:
+    endpoint: http://127.0.0.1:8001/otlp
+  otlphttp/mimir-monolithic-mode-docker-compose:
+    endpoint: http://mimir:8001/otlp
   otlphttp/grafana-enterprise-metrics-local:
     endpoint: http://127.0.0.1:8081/otlp
     headers:

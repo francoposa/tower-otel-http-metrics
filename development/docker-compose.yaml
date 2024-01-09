@@ -1,0 +1,38 @@
+networks:
+  echo-server:
+    name: "echo-server"
+
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    command:
+      - "--config=/etc/otel-collector-config.yaml"
+    networks:
+      echo-server:
+    volumes:
+      - ./config/otel-collector-config.yaml:/etc/otel-collector-config.yaml
+
+  mimir:
+    image: grafana/mimir:latest
+    container_name: mimir
+    command: [ "-config.file=/mimir/config/mimir.yaml" ]
+    networks:
+      echo-server:
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./config/mimir.yaml:/mimir/config/mimir.yaml
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    networks:
+      echo-server:
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./config/grafana-datasource-mimir.yaml:/etc/grafana/provisioning/datasources/mimir.yaml

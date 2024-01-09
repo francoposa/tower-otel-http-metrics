@@ -15,13 +15,7 @@ use tower_otel_http_metrics;
 
 const SERVICE_NAME: &str = "example-axum-http-service";
 
-async fn handle() -> Bytes {
-    Bytes::from("hello, world")
-}
-
-#[tokio::main]
-async fn main() {
-    // init otel resource config
+fn init_otel_resource() -> Resource {
     let otlp_resource_detected = Resource::from_detectors(
         Duration::from_secs(3),
         vec![
@@ -33,8 +27,15 @@ async fn main() {
     let otlp_resource_override = Resource::new(vec![
         opentelemetry_semantic_conventions::resource::SERVICE_NAME.string(SERVICE_NAME),
     ]);
-    let otlp_resource = otlp_resource_detected.merge(&otlp_resource_override);
+    otlp_resource_detected.merge(&otlp_resource_override)
+}
 
+async fn handle() -> Bytes {
+    Bytes::from("hello, world")
+}
+
+#[tokio::main]
+async fn main() {
     // init otel metrics pipeline
     // https://docs.rs/opentelemetry-otlp/latest/opentelemetry_otlp/#kitchen-sink-full-configuration
     // this configuration interface is annoyingly slightly different from the tracing one
@@ -46,8 +47,8 @@ async fn main() {
                 .tonic()
                 .with_endpoint("http://localhost:4317"),
         )
-        .with_resource(otlp_resource.clone())
-        .with_period(Duration::from_secs(15))
+        .with_resource(init_otel_resource().clone())
+        .with_period(Duration::from_secs(10))
         .build() // build registers the global meter provider
         .unwrap();
 
