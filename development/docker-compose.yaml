@@ -4,12 +4,14 @@ networks:
 
 services:
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:latest
+    image: otel/opentelemetry-collector:latest
     container_name: otel-collector
     command:
       - "--config=/etc/otel-collector-config.yaml"
     networks:
       echo-server:
+    ports:
+      - "4317:4317"
     volumes:
       - ./config/otel-collector-config.yaml:/etc/otel-collector-config.yaml
 

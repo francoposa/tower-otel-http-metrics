@@ -18,9 +18,8 @@ use std::{fmt, result};
 use axum::extract::MatchedPath;
 use futures_util::ready;
 use http::{Response, Version};
-use opentelemetry_api::global;
-use opentelemetry_api::metrics::{Histogram, Meter};
-use opentelemetry_api::KeyValue;
+use opentelemetry::metrics::{Histogram, Meter};
+use opentelemetry::{global, KeyValue};
 use pin_project_lite::pin_project;
 use tower_layer::Layer;
 use tower_service::Service;
@@ -73,7 +72,7 @@ enum ErrorKind {
     #[allow(dead_code)]
     /// Uncategorized
     Other(String),
-
+    #[allow(dead_code)]
     /// Invalid configuration
     Config(String),
 }

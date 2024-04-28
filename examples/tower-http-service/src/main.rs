@@ -7,7 +7,7 @@ use http_body_util::Full;
 use hyper::body::Bytes;
 use hyper::server::conn::http1;
 use hyper::{Request, Response};
-use opentelemetry_api::global;
+use opentelemetry::{global, KeyValue};
 use opentelemetry_otlp::{
     WithExportConfig, {self},
 };
@@ -30,9 +30,10 @@ fn init_otel_resource() -> Resource {
             Box::new(TelemetryResourceDetector),
         ],
     );
-    let otlp_resource_override = Resource::new(vec![
-        opentelemetry_semantic_conventions::resource::SERVICE_NAME.string(SERVICE_NAME),
-    ]);
+    let otlp_resource_override = Resource::new(vec![KeyValue {
+        key: opentelemetry_semantic_conventions::resource::SERVICE_NAME.into(),
+        value: SERVICE_NAME.into(),
+    }]);
     otlp_resource_detected.merge(&otlp_resource_override)
 }
 
