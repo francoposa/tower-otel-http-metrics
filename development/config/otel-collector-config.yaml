@@ -12,8 +12,6 @@ receivers:
         endpoint: 0.0.0.0:4317
 
 exporters:
-  logging:
-    loglevel: debug
   debug:
     verbosity: detailed
   otlphttp/grafana-cloud:
@@ -64,10 +62,10 @@ service:
   pipelines:
     metrics:
       receivers: [ otlp ]
-      exporters: [ logging, otlphttp/mimir-monolithic-mode-local ]
+      exporters: [ debug, otlphttp/mimir-monolithic-mode-docker-compose ]
 #    traces:
 #      receivers: [ otlp ]
-#      exporters: [ logging ]
+#      exporters: [ debug ]
 #    logs:
 #      receivers: [ otlp ]
-#      exporters: [ logging ]
+#      exporters: [ debug ]
