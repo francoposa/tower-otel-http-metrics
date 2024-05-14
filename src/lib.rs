@@ -39,7 +39,7 @@ const NETWORK_PROTOCOL_VERSION_LABEL: &str = "network.protocol.version";
 /// The OTEL SDKs do support calling for the global meter provider instead of holding a reference
 /// but it seems ideal to avoid extra access to the global meter, which sits behind a RWLock.
 struct HTTPMetricsLayerState {
-    pub server_request_duration: Histogram<u64>,
+    pub server_request_duration: Histogram<f64>,
 }
 
 #[derive(Clone)]
@@ -111,7 +111,7 @@ impl HTTPMetricsLayerBuilder {
     fn make_state(meter: Meter) -> HTTPMetricsLayerState {
         HTTPMetricsLayerState {
             server_request_duration: meter
-                .u64_histogram(Cow::from(HTTP_SERVER_DURATION_METRIC))
+                .f64_histogram(Cow::from(HTTP_SERVER_DURATION_METRIC))
                 .init(),
         }
     }
@@ -217,7 +217,7 @@ where
             this.metrics_state
                 .http_request_duration_start
                 .elapsed()
-                .as_secs(),
+                .as_secs_f64(),
             &labels,
         );
 
