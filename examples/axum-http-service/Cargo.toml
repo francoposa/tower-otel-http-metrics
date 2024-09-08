@@ -6,12 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tower_otel_http_metrics = { path = "../../../tower-otel-http-metrics", package = "tower-otel-http-metrics", features = ["axum"], default-features = false }
+tower_otel_http_metrics = { path = "../../", package = "tower-otel-http-metrics", features = ["axum"], default-features = false }
 axum = { features = ["http1", "tokio"], version = "0.7", default-features = false }
 bytes = { version = "1", default-features = false }
 http-body-util = { version = "0.1" }
-opentelemetry = { version = "0.22", default-features = false }
-opentelemetry_sdk = { version = "0.22", features = ["rt-tokio"], default-features = false }
-opentelemetry-semantic-conventions = { version = "0.14", default-features = false }
-opentelemetry-otlp = { version = "0.15", features = ["metrics", "grpc-tonic"], default-features = false }
+opentelemetry = { version = "0.23", default-features = false }
+opentelemetry_sdk = { version = "0.23", features = ["rt-tokio"], default-features = false }
+opentelemetry-semantic-conventions = { version = "0.16", default-features = false }
+opentelemetry-otlp = { version = "0.16", features = ["metrics", "grpc-tonic"], default-features = false }
 tokio = { version = "1", features = ["rt-multi-thread"], default-features = false }
