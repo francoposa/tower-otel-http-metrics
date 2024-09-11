@@ -41,7 +41,7 @@ async fn main() {
     // https://docs.rs/opentelemetry-otlp/latest/opentelemetry_otlp/#kitchen-sink-full-configuration
     // this configuration interface is annoyingly slightly different from the tracing one
     // also the above documentation is outdated, it took awhile to get this correct one working
-    opentelemetry_otlp::new_pipeline()
+    let meter_provider = opentelemetry_otlp::new_pipeline()
         .metrics(opentelemetry_sdk::runtime::Tokio)
         .with_exporter(
             opentelemetry_otlp::new_exporter()
@@ -53,6 +53,7 @@ async fn main() {
         .build() // build registers the global meter provider
         .unwrap();
 
+    global::set_meter_provider(meter_provider);
     // init our otel metrics middleware
     let global_meter = global::meter(Cow::from(SERVICE_NAME));
     let otel_metrics_service_layer = tower_otel_http_metrics::HTTPMetricsLayerBuilder::new()
