@@ -3,6 +3,32 @@ networks:
     name: "echo-server"
 
 services:
+  example-axum-echo-server:
+    build:
+      context: ../
+      dockerfile: Dockerfile.axum
+    container_name: echo-server
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_METRIC_EXPORT_INTERVAL=10000
+    networks:
+      echo-server:
+    ports:
+      - "5000:5000"
+
+  example-tower-echo-server:
+    build:
+      context: ../
+      dockerfile: Dockerfile.tower
+    container_name: echo-server
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_METRIC_EXPORT_INTERVAL=10000
+    networks:
+      echo-server:
+    ports:
+      - "5000:5000"
+
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     container_name: otel-collector
@@ -38,3 +64,14 @@ services:
       - "3000:3000"
     volumes:
       - ./config/grafana-datasource-mimir.yaml:/etc/grafana/provisioning/datasources/mimir.yaml
+
+  k6-load-gen:
+    image: grafana/k6:latest
+    container_name: k6-load-gen
+    command:
+      - "run"
+      - "/scripts/echo-all.js"
+    networks:
+      echo-server:
+    volumes:
+      - ./load-gen:/scripts
