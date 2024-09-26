@@ -72,7 +72,7 @@ async fn main() {
         .service_fn(handle);
     let hyper_service = hyper_util::service::TowerToHyperService::new(tower_service);
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], 5000));
+    let addr = SocketAddr::from(([0, 0, 0, 0], 5000));
     let listener = TcpListener::bind(addr).await.unwrap();
 
     loop {
