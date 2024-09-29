@@ -5,7 +5,6 @@ use std::time::Duration;
 
 use http_body_util::Full;
 use hyper::body::Bytes;
-use hyper::server::conn::http1;
 use hyper::{Request, Response};
 use opentelemetry::{global, KeyValue};
 use opentelemetry_otlp::{
@@ -82,9 +81,10 @@ async fn main() {
         let service_clone = hyper_service.clone();
 
         tokio::task::spawn(async move {
-            if let Err(err) = http1::Builder::new()
-                .serve_connection(io, service_clone)
-                .await
+            if let Err(err) =
+                hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new())
+                    .serve_connection(io, service_clone)
+                    .await
             {
                 eprintln!("server error: {}", err);
             }

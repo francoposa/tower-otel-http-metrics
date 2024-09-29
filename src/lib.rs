@@ -17,7 +17,7 @@ use std::{fmt, result};
 #[cfg(feature = "axum")]
 use axum::extract::MatchedPath;
 use futures_util::ready;
-use http::{Response, Version};
+use http;
 use opentelemetry::metrics::{Histogram, Meter};
 use opentelemetry::{global, KeyValue};
 use pin_project_lite::pin_project;
@@ -234,7 +234,7 @@ where
 
 fn extract_labels_server_request_duration<T>(
     metrics_state: &ResponseFutureMetricsState,
-    resp: &Response<T>,
+    resp: &http::Response<T>,
 ) -> Vec<KeyValue> {
     vec![
         KeyValue::new(HTTP_ROUTE_LABEL, metrics_state.http_route.clone()),
@@ -254,7 +254,7 @@ fn extract_labels_server_request_duration<T>(
     ]
 }
 
-fn split_and_format_protocol_version(http_version: Version) -> (String, String) {
+fn split_and_format_protocol_version(http_version: http::Version) -> (String, String) {
     let version_str = match http_version {
         http::Version::HTTP_09 => "0.9",
         http::Version::HTTP_10 => "1.0",
