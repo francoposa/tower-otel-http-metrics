@@ -85,7 +85,7 @@ impl fmt::Debug for Error {
 
 impl HTTPMetricsLayerBuilder {
     pub fn default() -> Self {
-        let meter = global::meter(Cow::from(""));
+        let meter = global::meter("");
         HTTPMetricsLayerBuilder { meter: Some(meter) }
     }
 
