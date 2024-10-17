@@ -16,7 +16,6 @@ Adding OpenTelementry HTTP Server metrics using the [`Axum`](https://docs.rs/axu
 over a Tower-compatible [`Hyper`](https://docs.rs/hyper/latest/hyper) Service:
 
 ```rust
-use std::borrow::Cow;
 use std::time::Duration;
 
 use axum::routing::{get, post, put, Router};
@@ -73,7 +72,7 @@ async fn main() {
 
     global::set_meter_provider(meter_provider);
     // init our otel metrics middleware
-    let global_meter = global::meter(Cow::from(SERVICE_NAME));
+    let global_meter = global::meter(SERVICE_NAME);
     let otel_metrics_service_layer = tower_otel_http_metrics::HTTPMetricsLayerBuilder::new()
         .with_meter(global_meter)
         .build()
@@ -100,7 +99,6 @@ Adding OpenTelementry HTTP Server metrics to a bare-bones Tower-compatible Servi
 using [`Hyper`](https://docs.rs/crate/hyper/latest):
 
 ```rust
-use std::borrow::Cow;
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -163,7 +161,7 @@ async fn main() {
 
     global::set_meter_provider(meter_provider);
     // init our otel metrics middleware
-    let global_meter = global::meter(Cow::from(SERVICE_NAME));
+    let global_meter = global::meter(SERVICE_NAME);
     let otel_metrics_service_layer = tower_otel_http_metrics::HTTPMetricsLayerBuilder::new()
         .with_meter(global_meter)
         .build()
