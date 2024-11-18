@@ -25,7 +25,13 @@ use tower_layer::Layer;
 use tower_service::Service;
 
 const HTTP_SERVER_DURATION_METRIC: &str = "http.server.request.duration";
+const HTTP_SERVER_DURATION_UNIT: &str = "s";
+
+const HTTP_SERVER_DURATION_BOUNDARIES: [f64; 14] = [
+    0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0
+];
 const HTTP_SERVER_ACTIVE_REQUESTS_METRIC: &str = "http.server.active_requests";
+const HTTP_SERVER_ACTIVE_REQUESTS_UNIT: &str = "{request}";
 
 const HTTP_REQUEST_METHOD_LABEL: &str = "http.request.method";
 const HTTP_ROUTE_LABEL: &str = "http.route";
@@ -118,11 +124,14 @@ impl HTTPMetricsLayerBuilder {
         HTTPMetricsLayerState {
             server_request_duration: meter
                 .f64_histogram(Cow::from(HTTP_SERVER_DURATION_METRIC))
+                .with_unit(Cow::from(HTTP_SERVER_DURATION_UNIT))
+                .with_boundaries(HTTP_SERVER_DURATION_BOUNDARIES.to_vec())
                 .init(),
             server_active_requests: meter
                 .i64_up_down_counter(Cow::from(HTTP_SERVER_ACTIVE_REQUESTS_METRIC))
-                .with_description("The number of active HTTP requests.")
-                .init()
+                .with_description("Number of active HTTP requests.")
+                .with_unit(Cow::from(HTTP_SERVER_ACTIVE_REQUESTS_UNIT))
+                .init(),
         }
     }
 }
