@@ -34,6 +34,8 @@ const HTTP_RESPONSE_STATUS_CODE_LABEL: &str = "http.response.status_code";
 const NETWORK_PROTOCOL_NAME_LABEL: &str = "network.protocol.name";
 const NETWORK_PROTOCOL_VERSION_LABEL: &str = "network.protocol.version";
 
+const URL_SCHEME_LABEL: &str = "url.scheme";
+
 /// State scoped to the entire middleware Layer.
 ///
 /// For now the only global state we hold onto is the metrics instruments.
@@ -153,6 +155,7 @@ struct ResponseFutureMetricsState {
     http_route: String,
     network_protocol_name: String,
     network_protocol_version: String,
+    url_scheme: String,
 }
 
 pin_project! {
@@ -193,9 +196,9 @@ where
         // let _headers = parse_request_headers(req.headers());
 
         let (protocol, version) = split_and_format_protocol_version(req.version());
-        req.uri();
+        let scheme = req.uri().scheme_str().unwrap_or("").to_string();
 
-        let server_active_request_labels = labels_server_active_request(&method);
+        let server_active_request_labels = labels_server_active_request(&method, &scheme);
 
         self.state.server_active_requests
             .add(1, &server_active_request_labels);
@@ -209,6 +212,7 @@ where
                 http_route: matched_path,
                 network_protocol_name: protocol,
                 network_protocol_version: version,
+                url_scheme: scheme,
             },
         }
     }
@@ -236,7 +240,8 @@ where
             &labels,
         );
         let server_active_request_labels = labels_server_active_request(
-            &this.metrics_state.http_request_method
+            &this.metrics_state.http_request_method,
+            &this.metrics_state.url_scheme,
         );
         this.layer_state.server_active_requests.add(-1, &server_active_request_labels);
 
@@ -270,15 +275,23 @@ fn extract_labels_server_request_duration<T>(
             NETWORK_PROTOCOL_VERSION_LABEL,
             metrics_state.network_protocol_version.clone(),
         ),
+        KeyValue::new(
+            URL_SCHEME_LABEL,
+            metrics_state.url_scheme.clone(),
+        )
     ]
 }
 
 
-fn labels_server_active_request(method: &String) -> Vec<KeyValue> {
+fn labels_server_active_request(method: &String, scheme: &String) -> Vec<KeyValue> {
     vec![
         KeyValue::new(
             HTTP_REQUEST_METHOD_LABEL,
             method.clone(),
+        ),
+        KeyValue::new(
+            URL_SCHEME_LABEL,
+            scheme.clone(),
         ),
     ]
 }
