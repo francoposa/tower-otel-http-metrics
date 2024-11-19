@@ -18,13 +18,20 @@ use std::{fmt, result};
 use axum::extract::MatchedPath;
 use futures_util::ready;
 use http;
-use opentelemetry::metrics::{Histogram, Meter};
+use opentelemetry::metrics::{Histogram, Meter, UpDownCounter};
 use opentelemetry::{global, KeyValue};
 use pin_project_lite::pin_project;
 use tower_layer::Layer;
 use tower_service::Service;
 
 const HTTP_SERVER_DURATION_METRIC: &str = "http.server.request.duration";
+const HTTP_SERVER_DURATION_UNIT: &str = "s";
+
+const HTTP_SERVER_DURATION_BOUNDARIES: [f64; 14] = [
+    0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0
+];
+const HTTP_SERVER_ACTIVE_REQUESTS_METRIC: &str = "http.server.active_requests";
+const HTTP_SERVER_ACTIVE_REQUESTS_UNIT: &str = "{request}";
 
 const HTTP_REQUEST_METHOD_LABEL: &str = "http.request.method";
 const HTTP_ROUTE_LABEL: &str = "http.route";
@@ -33,6 +40,8 @@ const HTTP_RESPONSE_STATUS_CODE_LABEL: &str = "http.response.status_code";
 const NETWORK_PROTOCOL_NAME_LABEL: &str = "network.protocol.name";
 const NETWORK_PROTOCOL_VERSION_LABEL: &str = "network.protocol.version";
 
+const URL_SCHEME_LABEL: &str = "url.scheme";
+
 /// State scoped to the entire middleware Layer.
 ///
 /// For now the only global state we hold onto is the metrics instruments.
@@ -40,6 +49,9 @@ const NETWORK_PROTOCOL_VERSION_LABEL: &str = "network.protocol.version";
 /// but it seems ideal to avoid extra access to the global meter, which sits behind a RWLock.
 struct HTTPMetricsLayerState {
     pub server_request_duration: Histogram<f64>,
+
+    pub server_active_requests: UpDownCounter<i64>,
+
 }
 
 #[derive(Clone)]
@@ -112,6 +124,13 @@ impl HTTPMetricsLayerBuilder {
         HTTPMetricsLayerState {
             server_request_duration: meter
                 .f64_histogram(Cow::from(HTTP_SERVER_DURATION_METRIC))
+                .with_unit(Cow::from(HTTP_SERVER_DURATION_UNIT))
+                .with_boundaries(HTTP_SERVER_DURATION_BOUNDARIES.to_vec())
+                .init(),
+            server_active_requests: meter
+                .i64_up_down_counter(Cow::from(HTTP_SERVER_ACTIVE_REQUESTS_METRIC))
+                .with_description("Number of active HTTP requests.")
+                .with_unit(Cow::from(HTTP_SERVER_ACTIVE_REQUESTS_UNIT))
                 .init(),
         }
     }
@@ -145,6 +164,7 @@ struct ResponseFutureMetricsState {
     http_route: String,
     network_protocol_name: String,
     network_protocol_version: String,
+    url_scheme: String,
 }
 
 pin_project! {
@@ -185,7 +205,12 @@ where
         // let _headers = parse_request_headers(req.headers());
 
         let (protocol, version) = split_and_format_protocol_version(req.version());
-        req.uri();
+        let scheme = req.uri().scheme_str().unwrap_or("").to_string();
+
+        let server_active_request_labels = labels_server_active_request(&method, &scheme);
+
+        self.state.server_active_requests
+            .add(1, &server_active_request_labels);
 
         HTTPMetricsResponseFuture {
             inner_response_future: self.inner_service.call(req),
@@ -196,10 +221,13 @@ where
                 http_route: matched_path,
                 network_protocol_name: protocol,
                 network_protocol_version: version,
+                url_scheme: scheme,
             },
         }
     }
 }
+
+
 
 impl<F, ResBody, E> Future for HTTPMetricsResponseFuture<F>
 where
@@ -220,6 +248,11 @@ where
                 .as_secs_f64(),
             &labels,
         );
+        let server_active_request_labels = labels_server_active_request(
+            &this.metrics_state.http_request_method,
+            &this.metrics_state.url_scheme,
+        );
+        this.layer_state.server_active_requests.add(-1, &server_active_request_labels);
 
         Ready(Ok(response))
     }
@@ -251,8 +284,27 @@ fn extract_labels_server_request_duration<T>(
             NETWORK_PROTOCOL_VERSION_LABEL,
             metrics_state.network_protocol_version.clone(),
         ),
+        KeyValue::new(
+            URL_SCHEME_LABEL,
+            metrics_state.url_scheme.clone(),
+        )
     ]
 }
+
+
+fn labels_server_active_request(method: &String, scheme: &String) -> Vec<KeyValue> {
+    vec![
+        KeyValue::new(
+            HTTP_REQUEST_METHOD_LABEL,
+            method.clone(),
+        ),
+        KeyValue::new(
+            URL_SCHEME_LABEL,
+            scheme.clone(),
+        ),
+    ]
+}
+
 
 fn split_and_format_protocol_version(http_version: http::Version) -> (String, String) {
     let version_str = match http_version {
