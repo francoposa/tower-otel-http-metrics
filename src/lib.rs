@@ -36,7 +36,6 @@ const HTTP_SERVER_ACTIVE_REQUESTS_UNIT: &str = "{request}";
 const HTTP_SERVER_REQUEST_BODY_SIZE_METRIC: &str = "http.server.request.body.size";
 const HTTP_SERVER_REQUEST_BODY_SIZE_UNIT: &str = "By";
 
-
 const HTTP_REQUEST_METHOD_LABEL: &str = "http.request.method";
 const HTTP_ROUTE_LABEL: &str = "http.route";
 const HTTP_RESPONSE_STATUS_CODE_LABEL: &str = "http.response.status_code";
@@ -130,17 +129,17 @@ impl HTTPMetricsLayerBuilder {
                 .with_description("Duration of HTTP server requests.")
                 .with_unit(Cow::from(HTTP_SERVER_DURATION_UNIT))
                 .with_boundaries(HTTP_SERVER_DURATION_BOUNDARIES.to_vec())
-                .init(),
+                .build(),
             server_active_requests: meter
                 .i64_up_down_counter(Cow::from(HTTP_SERVER_ACTIVE_REQUESTS_METRIC))
                 .with_description("Number of active HTTP server requests.")
                 .with_unit(Cow::from(HTTP_SERVER_ACTIVE_REQUESTS_UNIT))
-                .init(),
+                .build(),
             server_request_body_size: meter
                 .u64_histogram(HTTP_SERVER_REQUEST_BODY_SIZE_METRIC)
                 .with_description("Size of HTTP server request bodies.")
                 .with_unit(HTTP_SERVER_REQUEST_BODY_SIZE_UNIT)
-                .init(),
+                .build(),
         }
     }
 }
