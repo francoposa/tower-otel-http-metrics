@@ -127,12 +127,13 @@ impl HTTPMetricsLayerBuilder {
         HTTPMetricsLayerState {
             server_request_duration: meter
                 .f64_histogram(Cow::from(HTTP_SERVER_DURATION_METRIC))
+                .with_description("Duration of HTTP server requests.")
                 .with_unit(Cow::from(HTTP_SERVER_DURATION_UNIT))
                 .with_boundaries(HTTP_SERVER_DURATION_BOUNDARIES.to_vec())
                 .init(),
             server_active_requests: meter
                 .i64_up_down_counter(Cow::from(HTTP_SERVER_ACTIVE_REQUESTS_METRIC))
-                .with_description("Number of active HTTP requests.")
+                .with_description("Number of active HTTP server requests.")
                 .with_unit(Cow::from(HTTP_SERVER_ACTIVE_REQUESTS_UNIT))
                 .init(),
             server_request_body_size: meter
