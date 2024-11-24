@@ -41,10 +41,10 @@ fn init_otel_resource() -> Resource {
             Box::new(TelemetryResourceDetector),
         ],
     );
-    let otlp_resource_override = Resource::new(vec![KeyValue {
-        key: opentelemetry_semantic_conventions::resource::SERVICE_NAME.into(),
-        value: SERVICE_NAME.into(),
-    }]);
+    let otlp_resource_override = Resource::new(vec![KeyValue::new(
+        opentelemetry_semantic_conventions::resource::SERVICE_NAME,
+        SERVICE_NAME,
+    )]);
     otlp_resource_detected.merge(&otlp_resource_override)
 }
 
@@ -58,17 +58,24 @@ async fn main() {
     // https://docs.rs/opentelemetry-otlp/latest/opentelemetry_otlp/#kitchen-sink-full-configuration
     // this configuration interface is annoyingly slightly different from the tracing one
     // also the above documentation is outdated, it took awhile to get this correct one working
-    let meter_provider = opentelemetry_otlp::new_pipeline()
-        .metrics(opentelemetry_sdk::runtime::Tokio)
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint("http://localhost:4317"),
-        )
-        .with_resource(init_otel_resource().clone())
-        .with_period(Duration::from_secs(10))
-        .build() // build registers the global meter provider
+    let exporter = opentelemetry_otlp::MetricExporter::builder()
+        .with_tonic()
+        .with_endpoint("http://localhost:4317")
+        .build()
         .unwrap();
+
+    let reader = opentelemetry_sdk::metrics::PeriodicReader::builder(
+        exporter,
+        opentelemetry_sdk::runtime::Tokio,
+    )
+    .with_interval(std::time::Duration::from_secs(10))
+    .build();
+
+    let meter_provider = opentelemetry_sdk::metrics::SdkMeterProvider::builder()
+        .with_reader(reader)
+        .with_resource(init_otel_resource())
+        .build();
+
 
     global::set_meter_provider(meter_provider);
     // init our otel metrics middleware
@@ -130,10 +137,10 @@ fn init_otel_resource() -> Resource {
             Box::new(TelemetryResourceDetector),
         ],
     );
-    let otlp_resource_override = Resource::new(vec![KeyValue {
-        key: opentelemetry_semantic_conventions::resource::SERVICE_NAME.into(),
-        value: SERVICE_NAME.into(),
-    }]);
+    let otlp_resource_override = Resource::new(vec![KeyValue::new(
+        opentelemetry_semantic_conventions::resource::SERVICE_NAME,
+        SERVICE_NAME,
+    )]);
     otlp_resource_detected.merge(&otlp_resource_override)
 }
 
@@ -147,17 +154,23 @@ async fn main() {
     // https://docs.rs/opentelemetry-otlp/latest/opentelemetry_otlp/#kitchen-sink-full-configuration
     // this configuration interface is annoyingly slightly different from the tracing one
     // also the above documentation is outdated, it took awhile to get this correct one working
-    let meter_provider = opentelemetry_otlp::new_pipeline()
-        .metrics(opentelemetry_sdk::runtime::Tokio)
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint("http://localhost:4317"),
-        )
-        .with_resource(init_otel_resource().clone())
-        .with_period(Duration::from_secs(10))
-        .build() // build registers the global meter provider
+    let exporter = opentelemetry_otlp::MetricExporter::builder()
+        .with_tonic()
+        .with_endpoint("http://localhost:4317")
+        .build()
         .unwrap();
+
+    let reader = opentelemetry_sdk::metrics::PeriodicReader::builder(
+        exporter,
+        opentelemetry_sdk::runtime::Tokio,
+    )
+    .with_interval(std::time::Duration::from_secs(10))
+    .build();
+
+    let meter_provider = opentelemetry_sdk::metrics::SdkMeterProvider::builder()
+        .with_reader(reader)
+        .with_resource(init_otel_resource())
+        .build();
 
     global::set_meter_provider(meter_provider);
     // init our otel metrics middleware
