@@ -17,7 +17,6 @@ use std::{fmt, result};
 #[cfg(feature = "axum")]
 use axum::extract::MatchedPath;
 use futures_util::ready;
-use http;
 use opentelemetry::metrics::{Histogram, Meter, UpDownCounter};
 use opentelemetry::{global, KeyValue};
 use pin_project_lite::pin_project;
@@ -36,14 +35,13 @@ const HTTP_SERVER_ACTIVE_REQUESTS_UNIT: &str = "{request}";
 const HTTP_SERVER_REQUEST_BODY_SIZE_METRIC: &str = "http.server.request.body.size";
 const HTTP_SERVER_REQUEST_BODY_SIZE_UNIT: &str = "By";
 
+const NETWORK_PROTOCOL_NAME_LABEL: &str = "network.protocol.name";
+const NETWORK_PROTOCOL_VERSION_LABEL: &str = "network.protocol.version";
+const URL_SCHEME_LABEL: &str = "url.scheme";
+
 const HTTP_REQUEST_METHOD_LABEL: &str = "http.request.method";
 const HTTP_ROUTE_LABEL: &str = "http.route";
 const HTTP_RESPONSE_STATUS_CODE_LABEL: &str = "http.response.status_code";
-
-const NETWORK_PROTOCOL_NAME_LABEL: &str = "network.protocol.name";
-const NETWORK_PROTOCOL_VERSION_LABEL: &str = "network.protocol.version";
-
-const URL_SCHEME_LABEL: &str = "url.scheme";
 
 /// State scoped to the entire middleware Layer.
 ///
@@ -97,12 +95,14 @@ impl fmt::Debug for Error {
     }
 }
 
-impl HTTPMetricsLayerBuilder {
-    pub fn default() -> Self {
+impl Default for HTTPMetricsLayerBuilder {
+    fn default() -> Self {
         let meter = global::meter("");
         HTTPMetricsLayerBuilder { meter: Some(meter) }
     }
+}
 
+impl HTTPMetricsLayerBuilder {
     pub fn new() -> Self {
         HTTPMetricsLayerBuilder { meter: None }
     }
@@ -163,18 +163,18 @@ impl<S> Layer<S> for HTTPMetricsLayer {
 /// or calculated with respect to the data held here (e.g., duration = now - duration start).
 #[derive(Clone)]
 struct ResponseFutureMetricsState {
-    // fields for the metrics themselves
+    // fields for the metric values
     // https://opentelemetry.io/docs/specs/semconv/http/http-metrics/#metric-httpserverrequestduration
-    http_request_duration_start: Instant,
+    duration_start: Instant,
     // https://opentelemetry.io/docs/specs/semconv/http/http-metrics/#metric-httpserverrequestbodysize
-    http_request_body_size: Option<u64>,
+    body_size: Option<u64>,
 
     // fields for metric labels
-    http_request_method: String,
-    http_route: Option<String>,
-    network_protocol_name: String,
-    network_protocol_version: String,
-    url_scheme: String,
+    protocol_name_kv: KeyValue,
+    protocol_version_kv: KeyValue,
+    url_scheme_kv: KeyValue,
+    method_kv: KeyValue,
+    route_kv_opt: Option<KeyValue>,
 }
 
 pin_project! {
@@ -202,40 +202,47 @@ where
     fn call(&mut self, req: http::Request<ReqBody>) -> Self::Future {
         let duration_start = Instant::now();
 
-        let method = req.method().as_str().to_owned();
-
-        #[allow(unused_mut)]
-        let mut matched_path = None;
-        #[cfg(feature = "axum")]
-        if let Some(mp) = req.extensions().get::<MatchedPath>() {
-            matched_path = Some(mp.as_str().to_owned());
-        };
-
         let headers = req.headers();
-
-        let (protocol, version) = split_and_format_protocol_version(req.version());
-        let scheme = req.uri().scheme_str().unwrap_or("").to_string();
         let content_length = headers
             .get(http::header::CONTENT_LENGTH)
             .and_then(|value| value.to_str().ok()?.parse::<u64>().ok());
 
-        let server_active_request_labels = labels_server_active_request(&method, &scheme);
+        let (protocol, version) = split_and_format_protocol_version(req.version());
+        let protocol_name_kv = KeyValue::new(NETWORK_PROTOCOL_NAME_LABEL, protocol);
+        let protocol_version_kv = KeyValue::new(NETWORK_PROTOCOL_VERSION_LABEL, version);
+
+        let scheme = req.uri().scheme_str().unwrap_or("").to_string();
+        let url_scheme_kv = KeyValue::new(URL_SCHEME_LABEL, scheme);
+
+        let method = req.method().as_str().to_owned();
+        let method_kv = KeyValue::new(HTTP_REQUEST_METHOD_LABEL, method);
+
+        #[allow(unused_mut)]
+        let mut route_kv = None;
+        #[cfg(feature = "axum")]
+        if let Some(matched_path) = req.extensions().get::<MatchedPath>() {
+            route_kv = Some(KeyValue::new(
+                HTTP_ROUTE_LABEL,
+                matched_path.as_str().to_owned(),
+            ));
+        };
 
         self.state
             .server_active_requests
-            .add(1, &server_active_request_labels);
+            .add(1, &[url_scheme_kv.clone(), method_kv.clone()]);
 
         HTTPMetricsResponseFuture {
             inner_response_future: self.inner_service.call(req),
             layer_state: self.state.clone(),
             metrics_state: ResponseFutureMetricsState {
-                http_request_duration_start: duration_start,
-                http_request_method: method,
-                http_route: matched_path,
-                network_protocol_name: protocol,
-                network_protocol_version: version,
-                url_scheme: scheme,
-                http_request_body_size: content_length,
+                duration_start,
+                body_size: content_length,
+
+                protocol_name_kv,
+                protocol_version_kv,
+                url_scheme_kv,
+                method_kv,
+                route_kv_opt: route_kv,
             },
         }
     }
@@ -250,104 +257,42 @@ where
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
         let response = ready!(this.inner_response_future.poll(cx))?;
+        let status = response.status();
 
-        let server_request_duration_labels =
-            extract_labels_server_request_duration(this.metrics_state, &response);
+        // all OTEL `http.server...` metrics use this entire label set,
+        // except `http.server.active_requests`, which only uses a subset
+        let mut label_superset = vec![
+            this.metrics_state.protocol_name_kv.clone(),
+            this.metrics_state.protocol_version_kv.clone(),
+            this.metrics_state.url_scheme_kv.clone(),
+            this.metrics_state.method_kv.clone(),
+            KeyValue::new(HTTP_RESPONSE_STATUS_CODE_LABEL, i64::from(status.as_u16())),
+        ];
+        if let Some(route_kv) = this.metrics_state.route_kv_opt.clone() {
+            label_superset.push(route_kv);
+        }
+
         this.layer_state.server_request_duration.record(
-            this.metrics_state
-                .http_request_duration_start
-                .elapsed()
-                .as_secs_f64(),
-            &server_request_duration_labels,
+            this.metrics_state.duration_start.elapsed().as_secs_f64(),
+            &label_superset,
         );
 
-        let server_active_request_labels = labels_server_active_request(
-            &this.metrics_state.http_request_method,
-            &this.metrics_state.url_scheme,
-        );
-        this.layer_state
-            .server_active_requests
-            .add(-1, &server_active_request_labels);
-
-        if let Some(content_length) = this.metrics_state.http_request_body_size {
-            let server_request_body_size_labels =
-                labels_server_request_body_size(&this.metrics_state, &response);
-
+        if let Some(content_length) = this.metrics_state.body_size {
             this.layer_state
                 .server_request_body_size
-                .record(content_length, &server_request_body_size_labels);
+                .record(content_length, &label_superset);
         }
+
+        this.layer_state.server_active_requests.add(
+            -1,
+            &[
+                this.metrics_state.url_scheme_kv.clone(),
+                this.metrics_state.method_kv.clone(),
+            ],
+        );
 
         Ready(Ok(response))
     }
-}
-
-// fn parse_request_headers(headers: &HeaderMap) -> HashMap<String, String> {
-//     headers
-//         .iter()
-//         .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or_default().to_string()))
-//         .collect()
-// }
-
-fn extract_labels_server_request_duration<T>(
-    metrics_state: &ResponseFutureMetricsState,
-    resp: &http::Response<T>,
-) -> Vec<KeyValue> {
-    let mut labels = vec![
-        KeyValue::new(HTTP_RESPONSE_STATUS_CODE_LABEL, resp.status().to_string()),
-        KeyValue::new(
-            HTTP_REQUEST_METHOD_LABEL,
-            metrics_state.http_request_method.clone(),
-        ),
-        KeyValue::new(
-            NETWORK_PROTOCOL_NAME_LABEL,
-            metrics_state.network_protocol_name.clone(),
-        ),
-        KeyValue::new(
-            NETWORK_PROTOCOL_VERSION_LABEL,
-            metrics_state.network_protocol_version.clone(),
-        ),
-        KeyValue::new(URL_SCHEME_LABEL, metrics_state.url_scheme.clone()),
-    ];
-
-    // Conditionally required to add http.route if available
-    if let Some(route) = &metrics_state.http_route {
-        labels.push(KeyValue::new(HTTP_ROUTE_LABEL, route.clone()));
-    }
-    labels
-}
-
-fn labels_server_request_body_size<T>(
-    metrics_state: &ResponseFutureMetricsState,
-    resp: &http::Response<T>,
-) -> Vec<KeyValue> {
-    let mut labels = common_http_server_labels(
-        &metrics_state.http_request_method,
-        &metrics_state.url_scheme,
-    );
-
-    // Conditionally required to add response status code if sent
-    labels.push(KeyValue::new(
-        HTTP_RESPONSE_STATUS_CODE_LABEL,
-        resp.status().as_str().to_string(),
-    ));
-
-    // Conditionally required to add http route if available
-    if let Some(route) = &metrics_state.http_route {
-        labels.push(KeyValue::new(HTTP_ROUTE_LABEL, route.clone()));
-    }
-    labels
-}
-
-fn labels_server_active_request(method: &String, scheme: &String) -> Vec<KeyValue> {
-    common_http_server_labels(method, scheme)
-}
-
-fn common_http_server_labels(method: &String, scheme: &String) -> Vec<KeyValue> {
-    vec![
-        KeyValue::new(HTTP_REQUEST_METHOD_LABEL, method.clone()),
-        KeyValue::new(URL_SCHEME_LABEL, scheme.clone()),
-    ]
 }
 
 fn split_and_format_protocol_version(http_version: http::Version) -> (String, String) {
