@@ -218,10 +218,10 @@ where
         let method_kv = KeyValue::new(HTTP_REQUEST_METHOD_LABEL, method);
 
         #[allow(unused_mut)]
-        let mut route_kv = None;
+        let mut route_kv_opt = None;
         #[cfg(feature = "axum")]
         if let Some(matched_path) = req.extensions().get::<MatchedPath>() {
-            route_kv = Some(KeyValue::new(
+            route_kv_opt = Some(KeyValue::new(
                 HTTP_ROUTE_LABEL,
                 matched_path.as_str().to_owned(),
             ));
@@ -242,7 +242,7 @@ where
                 protocol_version_kv,
                 url_scheme_kv,
                 method_kv,
-                route_kv_opt: route_kv,
+                route_kv_opt,
             },
         }
     }
