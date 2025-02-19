@@ -40,6 +40,7 @@ const NETWORK_PROTOCOL_VERSION_LABEL: &str = "network.protocol.version";
 const URL_SCHEME_LABEL: &str = "url.scheme";
 
 const HTTP_REQUEST_METHOD_LABEL: &str = "http.request.method";
+#[allow(dead_code)] // cargo check is not smart
 const HTTP_ROUTE_LABEL: &str = "http.route";
 const HTTP_RESPONSE_STATUS_CODE_LABEL: &str = "http.response.status_code";
 
