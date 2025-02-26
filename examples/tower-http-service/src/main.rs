@@ -27,8 +27,22 @@ fn init_otel_resource() -> Resource {
     Resource::builder().with_service_name(SERVICE_NAME).build()
 }
 
+// PCT_SLOW_REQUESTS and MAX_SLOW_REQUEST_SEC are used to inject latency into some responses
+// in order to utilize the higher request duration buckets in the request duration histogram.
+// These values are chosen so that with the load-gen script's max 100 VUs, we get just enough
+// slow requests to show up on the histograms without completely blocking up the server.
+const PCT_SLOW_REQUESTS: u64 = 5;
+const MAX_SLOW_REQUEST_SEC: u64 = 16;
+const MAX_BODY_SIZE_MULTIPLE: u64 = 128;
+
 async fn handle(_req: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
-    Ok(Response::new(Full::new(Bytes::from("hello, world"))))
+    if rand_09::random_range(0..100) < PCT_SLOW_REQUESTS {
+        let slow_request_secs = rand_09::random_range(0..=MAX_SLOW_REQUEST_SEC);
+        tokio::time::sleep(Duration::from_secs(slow_request_secs)).await;
+    };
+    let body_size_multiple = rand_09::random_range(0..=MAX_BODY_SIZE_MULTIPLE);
+    let body = Bytes::from("{'msg': 'hello world'}".repeat(body_size_multiple as usize));
+    Ok(Response::new(Full::new(body)))
 }
 
 #[tokio::main]
@@ -51,7 +65,7 @@ async fn main() {
     global::set_meter_provider(meter_provider);
     // init our otel metrics middleware
     let global_meter = global::meter(SERVICE_NAME);
-    let otel_metrics_service_layer = tower_otel_http_metrics::HTTPMetricsLayerBuilder::new()
+    let otel_metrics_service_layer = tower_otel_http_metrics::HTTPMetricsLayerBuilder::builder()
         .with_meter(global_meter)
         .build()
         .unwrap();

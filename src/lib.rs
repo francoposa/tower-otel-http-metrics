@@ -18,7 +18,7 @@ use std::{fmt, result};
 use axum::extract::MatchedPath;
 use futures_util::ready;
 use opentelemetry::metrics::{Histogram, Meter, UpDownCounter};
-use opentelemetry::{global, KeyValue};
+use opentelemetry::KeyValue;
 use pin_project_lite::pin_project;
 use tower_layer::Layer;
 use tower_service::Service;
@@ -26,8 +26,16 @@ use tower_service::Service;
 const HTTP_SERVER_DURATION_METRIC: &str = "http.server.request.duration";
 const HTTP_SERVER_DURATION_UNIT: &str = "s";
 
-const HTTP_SERVER_DURATION_BOUNDARIES: [f64; 14] = [
+const _OTEL_DEFAULT_HTTP_SERVER_DURATION_BOUNDARIES: [f64; 14] = [
     0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1.0, 2.5, 5.0, 7.5, 10.0,
+];
+
+// OTEL default does not capture duration over 10s - a poor choice for an arbitrary http server;
+// we want to capture longer requests with some rough granularity on the upper end.
+// These choices are adapted from various recommendations in
+// https://github.com/open-telemetry/semantic-conventions/issues/336.
+const LIBRARY_DEFAULT_HTTP_SERVER_DURATION_BOUNDARIES: [f64; 14] = [
+    0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0,
 ];
 const HTTP_SERVER_ACTIVE_REQUESTS_METRIC: &str = "http.server.active_requests";
 const HTTP_SERVER_ACTIVE_REQUESTS_UNIT: &str = "{request}";
@@ -70,6 +78,7 @@ pub struct HTTPMetricsLayer {
 
 pub struct HTTPMetricsLayerBuilder {
     meter: Option<Meter>,
+    req_dur_bounds: Option<Vec<f64>>,
 }
 
 /// Error typedef to implement `std::error::Error` for `tower_otel_http_metrics`
@@ -96,22 +105,21 @@ impl fmt::Debug for Error {
     }
 }
 
-impl Default for HTTPMetricsLayerBuilder {
-    fn default() -> Self {
-        let meter = global::meter("");
-        HTTPMetricsLayerBuilder { meter: Some(meter) }
-    }
-}
-
 impl HTTPMetricsLayerBuilder {
-    pub fn new() -> Self {
-        HTTPMetricsLayerBuilder { meter: None }
+    pub fn builder() -> Self {
+        HTTPMetricsLayerBuilder {
+            meter: None,
+            req_dur_bounds: Some(LIBRARY_DEFAULT_HTTP_SERVER_DURATION_BOUNDARIES.to_vec()),
+        }
     }
 
     pub fn build(self) -> Result<HTTPMetricsLayer> {
+        let req_dur_bounds = self
+            .req_dur_bounds
+            .unwrap_or_else(|| LIBRARY_DEFAULT_HTTP_SERVER_DURATION_BOUNDARIES.to_vec());
         match self.meter {
             Some(meter) => Ok(HTTPMetricsLayer {
-                state: Arc::from(HTTPMetricsLayerBuilder::make_state(meter)),
+                state: Arc::from(HTTPMetricsLayerBuilder::make_state(meter, req_dur_bounds)),
             }),
             None => Err(Error {
                 inner: ErrorKind::Config(String::from("no meter provided")),
@@ -119,17 +127,18 @@ impl HTTPMetricsLayerBuilder {
         }
     }
 
-    pub fn with_meter(self, meter: Meter) -> Self {
-        HTTPMetricsLayerBuilder { meter: Some(meter) }
+    pub fn with_meter(mut self, meter: Meter) -> Self {
+        self.meter = Some(meter);
+        self
     }
 
-    fn make_state(meter: Meter) -> HTTPMetricsLayerState {
+    fn make_state(meter: Meter, req_dur_bounds: Vec<f64>) -> HTTPMetricsLayerState {
         HTTPMetricsLayerState {
             server_request_duration: meter
                 .f64_histogram(Cow::from(HTTP_SERVER_DURATION_METRIC))
                 .with_description("Duration of HTTP server requests.")
                 .with_unit(Cow::from(HTTP_SERVER_DURATION_UNIT))
-                .with_boundaries(HTTP_SERVER_DURATION_BOUNDARIES.to_vec())
+                .with_boundaries(req_dur_bounds)
                 .build(),
             server_active_requests: meter
                 .i64_up_down_counter(Cow::from(HTTP_SERVER_ACTIVE_REQUESTS_METRIC))

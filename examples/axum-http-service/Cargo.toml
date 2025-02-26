@@ -13,3 +13,4 @@ opentelemetry = { version = "0.28", default-features = false }
 opentelemetry_sdk = { version = "0.28", features = ["rt-tokio"], default-features = false }
 opentelemetry-otlp = { version = "0.28", features = ["grpc-tonic", "metrics"], default-features = false }
 tokio = { version = "1", features = ["rt-multi-thread"], default-features = false }
+rand_09 = { package = "rand", version = "0.9" }
