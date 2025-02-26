@@ -28,7 +28,8 @@ fn init_otel_resource() -> Resource {
 // slow requests to show up on the histograms without completely blocking up the server.
 const PCT_SLOW_REQUESTS: u64 = 5;
 const MAX_SLOW_REQUEST_SEC: u64 = 16;
-const MAX_BODY_SIZE_MULTIPLE: u64 = 128;
+// MAX_BODY_SIZE_MULTIPLE is used to demonstrate the `http.server.response.body.size` histogram
+const MAX_BODY_SIZE_MULTIPLE: u64 = 16;
 
 #[axum::debug_handler]
 async fn handle() -> Bytes {
@@ -37,7 +38,7 @@ async fn handle() -> Bytes {
         tokio::time::sleep(Duration::from_secs(slow_request_secs)).await;
     };
     let body_size_multiple = rand_09::random_range(0..=MAX_BODY_SIZE_MULTIPLE);
-    Bytes::from("{'msg': 'hello world'}".repeat(body_size_multiple as usize))
+    Bytes::from("hello world\n".repeat(body_size_multiple as usize))
 }
 
 #[tokio::main]
