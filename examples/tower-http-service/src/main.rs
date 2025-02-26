@@ -33,7 +33,8 @@ fn init_otel_resource() -> Resource {
 // slow requests to show up on the histograms without completely blocking up the server.
 const PCT_SLOW_REQUESTS: u64 = 5;
 const MAX_SLOW_REQUEST_SEC: u64 = 16;
-const MAX_BODY_SIZE_MULTIPLE: u64 = 128;
+// MAX_BODY_SIZE_MULTIPLE is used to demonstrate the `http.server.response.body.size` histogram
+const MAX_BODY_SIZE_MULTIPLE: u64 = 16;
 
 async fn handle(_req: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
     if rand_09::random_range(0..100) < PCT_SLOW_REQUESTS {
@@ -41,7 +42,7 @@ async fn handle(_req: Request<hyper::body::Incoming>) -> Result<Response<Full<By
         tokio::time::sleep(Duration::from_secs(slow_request_secs)).await;
     };
     let body_size_multiple = rand_09::random_range(0..=MAX_BODY_SIZE_MULTIPLE);
-    let body = Bytes::from("{'msg': 'hello world'}".repeat(body_size_multiple as usize));
+    let body = Bytes::from("hello world\n".repeat(body_size_multiple as usize));
     Ok(Response::new(Full::new(body)))
 }
 

@@ -43,6 +43,9 @@ const HTTP_SERVER_ACTIVE_REQUESTS_UNIT: &str = "{request}";
 const HTTP_SERVER_REQUEST_BODY_SIZE_METRIC: &str = "http.server.request.body.size";
 const HTTP_SERVER_REQUEST_BODY_SIZE_UNIT: &str = "By";
 
+const HTTP_SERVER_RESPONSE_BODY_SIZE_METRIC: &str = "http.server.response.body.size";
+const HTTP_SERVER_RESPONSE_BODY_SIZE_UNIT: &str = "By";
+
 const NETWORK_PROTOCOL_NAME_LABEL: &str = "network.protocol.name";
 const NETWORK_PROTOCOL_VERSION_LABEL: &str = "network.protocol.version";
 const URL_SCHEME_LABEL: &str = "url.scheme";
@@ -61,6 +64,7 @@ struct HTTPMetricsLayerState {
     pub server_request_duration: Histogram<f64>,
     pub server_active_requests: UpDownCounter<i64>,
     pub server_request_body_size: Histogram<u64>,
+    pub server_response_body_size: Histogram<u64>,
 }
 
 #[derive(Clone)]
@@ -150,6 +154,11 @@ impl HTTPMetricsLayerBuilder {
                 .with_description("Size of HTTP server request bodies.")
                 .with_unit(HTTP_SERVER_REQUEST_BODY_SIZE_UNIT)
                 .build(),
+            server_response_body_size: meter
+                .u64_histogram(HTTP_SERVER_RESPONSE_BODY_SIZE_METRIC)
+                .with_description("Size of HTTP server response bodies.")
+                .with_unit(HTTP_SERVER_RESPONSE_BODY_SIZE_UNIT)
+                .build(),
         }
     }
 }
@@ -177,7 +186,7 @@ struct ResponseFutureMetricsState {
     // https://opentelemetry.io/docs/specs/semconv/http/http-metrics/#metric-httpserverrequestduration
     duration_start: Instant,
     // https://opentelemetry.io/docs/specs/semconv/http/http-metrics/#metric-httpserverrequestbodysize
-    body_size: Option<u64>,
+    req_body_size: Option<u64>,
 
     // fields for metric labels
     protocol_name_kv: KeyValue,
@@ -197,7 +206,7 @@ pin_project! {
     }
 }
 
-impl<S, ReqBody, ResBody> Service<http::Request<ReqBody>> for HTTPMetricsService<S>
+impl<S, ReqBody, ResBody: http_body::Body> Service<http::Request<ReqBody>> for HTTPMetricsService<S>
 where
     S: Service<http::Request<ReqBody>, Response = http::Response<ResBody>>,
 {
@@ -246,7 +255,7 @@ where
             layer_state: self.state.clone(),
             metrics_state: ResponseFutureMetricsState {
                 duration_start,
-                body_size: content_length,
+                req_body_size: content_length,
 
                 protocol_name_kv,
                 protocol_version_kv,
@@ -258,7 +267,7 @@ where
     }
 }
 
-impl<F, ResBody, E> Future for HTTPMetricsResponseFuture<F>
+impl<F, ResBody: http_body::Body, E> Future for HTTPMetricsResponseFuture<F>
 where
     F: Future<Output = result::Result<http::Response<ResBody>, E>>,
 {
@@ -287,10 +296,17 @@ where
             &label_superset,
         );
 
-        if let Some(content_length) = this.metrics_state.body_size {
+        if let Some(req_content_length) = this.metrics_state.req_body_size {
             this.layer_state
                 .server_request_body_size
-                .record(content_length, &label_superset);
+                .record(req_content_length, &label_superset);
+        }
+
+        // use same approach for `http.server.response.body.size` as hyper does to set content-length
+        if let Some(resp_content_length) = response.body().size_hint().exact() {
+            this.layer_state
+                .server_response_body_size
+                .record(resp_content_length, &label_superset);
         }
 
         this.layer_state.server_active_requests.add(
