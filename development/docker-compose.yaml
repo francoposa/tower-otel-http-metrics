@@ -16,10 +16,10 @@ services:
     ports:
       - "5000:5000"
 
-  example-tower-echo-server:
+  example-hyper-echo-server:
     build:
       context: ../
-      dockerfile: ./examples/tower-http-service/Dockerfile.tower
+      dockerfile: ./examples/hyper-http-service/Dockerfile.hyper
     container_name: echo-server
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317

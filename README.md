@@ -120,7 +120,7 @@ use tokio::net::TcpListener;
 use tower::ServiceBuilder;
 use tower_otel_http_metrics;
 
-const SERVICE_NAME: &str = "example-tower-http-service";
+const SERVICE_NAME: &str = "example-hyper-http-service";
 // Metric export interval should be less than or equal to 15s
 // if the metrics may be converted to Prometheus metrics.
 // Prometheus' query engine and compatible implementations
