@@ -50,7 +50,7 @@ async fn handle(_req: Request<hyper::body::Incoming>) -> Result<Response<Full<By
 async fn main() {
     let exporter = opentelemetry_otlp::MetricExporter::builder()
         .with_tonic()
-        .with_endpoint("http://localhost:4317")
+        // .with_endpoint("http://localhost:4317")  // default; leave out in favor of env var OTEL_EXPORTER_OTLP_ENDPOINT
         .build()
         .unwrap();
 
