@@ -1,7 +1,7 @@
 [package]
 name = "tower-otel-http-metrics"
 edition = "2021"
-version = "0.14.0"
+version = "0.15.0"
 license = "MIT"
 description = "OpenTelemetry Metrics Middleware for Tower-compatible Rust HTTP servers"
 homepage = "https://github.com/francoposa/tower-otel-http-metrics"
