@@ -2,9 +2,6 @@ use http_body_util::Full;
 use hyper::body::Bytes;
 use hyper::{Request, Response};
 use opentelemetry::global;
-use opentelemetry_otlp::{
-    WithExportConfig, {self},
-};
 use opentelemetry_sdk::metrics::PeriodicReader;
 use opentelemetry_sdk::Resource;
 use std::convert::Infallible;
