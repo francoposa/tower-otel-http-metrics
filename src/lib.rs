@@ -168,8 +168,8 @@ pub struct Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.inner {
-            ErrorKind::Other(ref s) => write!(f, "{}", s),
-            ErrorKind::Config(ref s) => write!(f, "config error: {}", s),
+            ErrorKind::Other(ref s) => write!(f, "{s}"),
+            ErrorKind::Config(ref s) => write!(f, "config error: {s}"),
         }
     }
 }
