@@ -6,7 +6,7 @@
 
 #### Components
 * HTTP server examples with demo code utilizing this metrics middleware
-* K6 load generation script to to create traffic to the example servers
+* K6 load generation script to create traffic to the example servers
 * OTEL Collector to collect and forward metrics to receivers -
 by default the collector config will print metrics to its logs as well as forward to Mimir's OTEL endpoint.
 * Mimir to ingest the metrics into Prometheus metrics format
