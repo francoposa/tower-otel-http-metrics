@@ -52,8 +52,8 @@ a popular, high-level async backend web framework compatible with the tower and 
 
 This example demonstrates the Axum-specific attribute extractors enabled by the `axum` feature flag,
 as well as the support for custom request & response extractors to add metric attributes beyond the OTEL spec.
-The example extractors utilize inherent aspects of HTTP requests/responses such as path length and query parameters,
-as well as the [`http` crate](https://docs.rs/http/latest/http/)'s `Extensions`,
+The example extractors utilize inherent aspects of HTTP requests & responses such as path length and query parameters,
+as well as the `http` crate's [`Extensions`](https://docs.rs/http/latest/http/struct.Extensions.html),
 which allow arbitrary key-value pairs to be attached to requests as they are passed down and back up the stack.
 More can be found at ["What are Rust's HTTP extensions?"](https://blog.adamchalmers.com/what-are-extensions/).
 
