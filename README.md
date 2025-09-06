@@ -1,3 +1,13 @@
+
+
+
+> [!IMPORTANT]  
+> **Read-Only Mode**
+> This code has been moved to [openetelemetry-rust-contrib](https://github.com/open-telemetry/opentelemetry-rust-contrib)
+in the `opentelemetry-instrumentation-tower` package.
+> It has not yet been published to crates.io from the new location
+
+---
 # Tower OTEL Metrics Middleware
 
 OpenTelemetry Metrics Middleware for Tower-compatible Rust HTTP servers.
